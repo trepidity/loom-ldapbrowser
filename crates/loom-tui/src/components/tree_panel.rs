@@ -81,6 +81,21 @@ impl TreePanel {
                     Action::None
                 }
             }
+            KeyCode::Char('a') => {
+                if let Some(dn) = self.selected_dn().cloned() {
+                    Action::ShowCreateEntryDialog(dn)
+                } else {
+                    Action::None
+                }
+            }
+            KeyCode::Char('d') | KeyCode::Delete => {
+                if let Some(dn) = self.selected_dn().cloned() {
+                    let msg = format!("Delete entry?\n{}", dn);
+                    Action::ShowConfirm(msg, Box::new(Action::DeleteEntry(dn)))
+                } else {
+                    Action::None
+                }
+            }
             _ => Action::None,
         }
     }

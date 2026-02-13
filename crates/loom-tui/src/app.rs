@@ -19,6 +19,7 @@ use crate::components::bulk_update_dialog::BulkUpdateDialog;
 use crate::components::command_panel::CommandPanel;
 use crate::components::confirm_dialog::ConfirmDialog;
 use crate::components::connect_dialog::ConnectDialog;
+use crate::components::create_entry_dialog::CreateEntryDialog;
 use crate::components::credential_prompt::CredentialPromptDialog;
 use crate::components::detail_panel::DetailPanel;
 use crate::components::export_dialog::ExportDialog;
@@ -75,6 +76,7 @@ pub struct App {
     attribute_editor: AttributeEditor,
     export_dialog: ExportDialog,
     bulk_update_dialog: BulkUpdateDialog,
+    create_entry_dialog: CreateEntryDialog,
     schema_viewer: SchemaViewer,
     log_panel: LogPanel,
 
@@ -118,6 +120,7 @@ impl App {
             attribute_editor: AttributeEditor::new(theme.clone()),
             export_dialog: ExportDialog::new(theme.clone()),
             bulk_update_dialog: BulkUpdateDialog::new(theme.clone()),
+            create_entry_dialog: CreateEntryDialog::new(theme.clone()),
             schema_viewer: SchemaViewer::new(theme.clone()),
             log_panel: LogPanel::new(theme),
             last_adhoc_profile: None,
@@ -502,6 +505,63 @@ impl App {
         }
     }
 
+    fn spawn_create_entry(
+        &self,
+        conn_id: ConnectionId,
+        dn: String,
+        attributes: Vec<(String, Vec<String>)>,
+    ) {
+        let tab = self.tabs.iter().find(|t| t.id == conn_id);
+        if let Some(tab) = tab {
+            let connection = tab.connection.clone();
+            let tx = self.action_tx.clone();
+
+            tokio::spawn(async move {
+                let mut conn = connection.lock().await;
+                // Convert Vec<String> -> HashSet<String> for ldap3
+                let attrs: Vec<(String, std::collections::HashSet<String>)> = attributes
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into_iter().collect()))
+                    .collect();
+
+                match conn.add_entry(&dn, attrs).await {
+                    Ok(()) => {
+                        let _ = tx.send(Action::EntryCreated(dn));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Action::ErrorMessage(format!(
+                            "Failed to create entry: {}",
+                            e
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    fn spawn_delete_entry(&self, conn_id: ConnectionId, dn: String) {
+        let tab = self.tabs.iter().find(|t| t.id == conn_id);
+        if let Some(tab) = tab {
+            let connection = tab.connection.clone();
+            let tx = self.action_tx.clone();
+
+            tokio::spawn(async move {
+                let mut conn = connection.lock().await;
+                match conn.delete_entry(&dn).await {
+                    Ok(()) => {
+                        let _ = tx.send(Action::EntryDeleted(dn));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Action::ErrorMessage(format!(
+                            "Failed to delete entry: {}",
+                            e
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
     /// Check if any popup/dialog is currently visible.
     fn popup_active(&self) -> bool {
         self.confirm_dialog.visible
@@ -512,6 +572,7 @@ impl App {
             || self.attribute_editor.visible
             || self.export_dialog.visible
             || self.bulk_update_dialog.visible
+            || self.create_entry_dialog.visible
             || self.schema_viewer.visible
             || self.log_panel.visible
     }
@@ -548,6 +609,8 @@ impl App {
                             self.export_dialog.handle_key_event(key)
                         } else if self.bulk_update_dialog.visible {
                             self.bulk_update_dialog.handle_key_event(key)
+                        } else if self.create_entry_dialog.visible {
+                            self.create_entry_dialog.handle_key_event(key)
                         } else if self.schema_viewer.visible {
                             self.schema_viewer.handle_key_event(key)
                         } else if self.log_panel.visible {
@@ -928,6 +991,60 @@ impl App {
                 self.command_panel.push_message(msg);
             }
 
+            // Create / Delete Entry
+            Action::ShowCreateEntryDialog(parent_dn) => {
+                if self.active_tab_id.is_some() {
+                    self.create_entry_dialog.show(parent_dn);
+                } else {
+                    self.command_panel
+                        .push_error("No active connection".to_string());
+                }
+            }
+            Action::CreateEntry { dn, attributes } => {
+                if let Some(id) = self.active_tab_id {
+                    self.command_panel
+                        .push_message(format!("Creating entry: {}...", dn));
+                    self.spawn_create_entry(id, dn, attributes);
+                }
+            }
+            Action::EntryCreated(dn) => {
+                self.command_panel.push_message(format!(
+                    "Created entry: {}",
+                    loom_core::dn::rdn_display_name(&dn)
+                ));
+                // Refresh parent's children in the tree
+                if let Some(id) = self.active_tab_id {
+                    if let Some(parent) = loom_core::dn::parent_dn(&dn) {
+                        self.spawn_load_children(id, parent.to_string());
+                    }
+                }
+            }
+            Action::DeleteEntry(dn) => {
+                if let Some(id) = self.active_tab_id {
+                    self.command_panel
+                        .push_message(format!("Deleting entry: {}...", dn));
+                    self.spawn_delete_entry(id, dn);
+                }
+            }
+            Action::EntryDeleted(dn) => {
+                self.command_panel.push_message(format!(
+                    "Deleted entry: {}",
+                    loom_core::dn::rdn_display_name(&dn)
+                ));
+                // Clear detail panel if showing the deleted entry
+                if let Some(ref entry) = self.detail_panel.entry {
+                    if entry.dn == dn {
+                        self.detail_panel.clear();
+                    }
+                }
+                // Refresh parent's children in the tree
+                if let Some(id) = self.active_tab_id {
+                    if let Some(parent) = loom_core::dn::parent_dn(&dn) {
+                        self.spawn_load_children(id, parent.to_string());
+                    }
+                }
+            }
+
             // Schema
             Action::ShowSchemaViewer => {
                 let schema_and_id = self.active_tab().map(|tab| {
@@ -982,6 +1099,7 @@ impl App {
                 self.attribute_editor.hide();
                 self.export_dialog.hide();
                 self.bulk_update_dialog.hide();
+                self.create_entry_dialog.hide();
                 self.schema_viewer.hide();
                 self.log_panel.hide();
             }
@@ -1104,6 +1222,9 @@ impl App {
         }
         if self.bulk_update_dialog.visible {
             self.bulk_update_dialog.render(frame, full);
+        }
+        if self.create_entry_dialog.visible {
+            self.create_entry_dialog.render(frame, full);
         }
         if self.schema_viewer.visible {
             self.schema_viewer.render(frame, full);

@@ -99,6 +99,40 @@ impl LdapConnection {
         self.modify_entry(dn, mods).await
     }
 
+    /// Add a new entry with the given DN and attributes.
+    pub async fn add_entry(
+        &mut self,
+        dn: &str,
+        attrs: Vec<(String, HashSet<String>)>,
+    ) -> Result<(), CoreError> {
+        debug!("add_entry dn={} relax_rules={}", dn, self.settings.relax_rules);
+        for (attr, vals) in &attrs {
+            debug!("  attr={} vals={:?}", attr, vals);
+        }
+
+        let result = if self.settings.relax_rules {
+            self.ldap
+                .with_controls(vec![RelaxRules.into()])
+                .add(dn, attrs)
+                .await
+                .map_err(CoreError::Ldap)?
+        } else {
+            self.ldap.add(dn, attrs).await.map_err(CoreError::Ldap)?
+        };
+
+        debug!("add_entry result rc={} text={}", result.rc, result.text);
+
+        if result.rc != 0 {
+            return Err(CoreError::ModifyFailed(format!(
+                "Add {} failed rc={}: {}",
+                dn, result.rc, result.text
+            )));
+        }
+
+        info!("Added entry: {}", dn);
+        Ok(())
+    }
+
     /// Delete an entry by DN.
     pub async fn delete_entry(&mut self, dn: &str) -> Result<(), CoreError> {
         debug!("delete_entry dn={} relax_rules={}", dn, self.settings.relax_rules);

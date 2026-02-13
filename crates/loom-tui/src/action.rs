@@ -86,6 +86,13 @@ pub enum Action {
     },
     BulkUpdateComplete(String), // result message
 
+    // Create / Delete Entry
+    ShowCreateEntryDialog(String),                                     // parent DN
+    CreateEntry { dn: String, attributes: Vec<(String, Vec<String>)> },
+    EntryCreated(String),                                              // new entry DN
+    DeleteEntry(String),                                               // DN to delete
+    EntryDeleted(String),                                              // DN that was deleted
+
     // Schema
     ShowSchemaViewer,
     SchemaLoaded(ConnectionId, Box<SchemaCache>),

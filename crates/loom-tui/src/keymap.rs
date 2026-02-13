@@ -135,4 +135,20 @@ mod tests {
         let action = resolve_key(ctrl(KeyCode::Char('w')), FocusTarget::TreePanel);
         assert!(matches!(action, Action::SaveCurrentConnection));
     }
+
+    #[test]
+    fn test_tree_panel_a_no_action_in_keymap() {
+        // 'a' in tree context falls through to Action::None in the global keymap
+        // (the actual ShowCreateEntryDialog is handled by TreePanel::handle_key_event)
+        let action = resolve_key(key(KeyCode::Char('a')), FocusTarget::TreePanel);
+        assert!(matches!(action, Action::None));
+    }
+
+    #[test]
+    fn test_tree_panel_d_no_action_in_keymap() {
+        // 'd' in tree context falls through to Action::None in the global keymap
+        // (the actual delete confirm is handled by TreePanel::handle_key_event)
+        let action = resolve_key(key(KeyCode::Char('d')), FocusTarget::TreePanel);
+        assert!(matches!(action, Action::None));
+    }
 }

@@ -2,6 +2,7 @@ pub mod attribute_editor;
 pub mod bulk_update_dialog;
 pub mod command_panel;
 pub mod confirm_dialog;
+pub mod create_entry_dialog;
 pub mod connect_dialog;
 pub mod credential_prompt;
 pub mod detail_panel;
