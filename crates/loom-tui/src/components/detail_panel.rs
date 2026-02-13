@@ -1,0 +1,184 @@
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::layout::{Constraint, Rect};
+use ratatui::style::Modifier;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::Frame;
+
+use crate::action::Action;
+use crate::component::Component;
+use crate::theme::Theme;
+use loom_core::entry::LdapEntry;
+
+/// Flattened attribute row for table display.
+struct AttrRow {
+    attr_name: String,
+    value: String,
+    /// True for first value of an attribute (displays the attribute name).
+    is_first: bool,
+}
+
+/// The top-right panel: entry detail viewer.
+pub struct DetailPanel {
+    pub entry: Option<LdapEntry>,
+    pub table_state: TableState,
+    rows: Vec<AttrRow>,
+    theme: Theme,
+    area: Option<Rect>,
+}
+
+impl DetailPanel {
+    pub fn new(theme: Theme) -> Self {
+        Self {
+            entry: None,
+            table_state: TableState::default(),
+            rows: Vec::new(),
+            theme,
+            area: None,
+        }
+    }
+
+    pub fn set_entry(&mut self, entry: LdapEntry) {
+        self.rows = build_rows(&entry);
+        self.table_state
+            .select(if self.rows.is_empty() { None } else { Some(0) });
+        self.entry = Some(entry);
+    }
+
+    pub fn clear(&mut self) {
+        self.entry = None;
+        self.rows.clear();
+        self.table_state.select(None);
+    }
+
+    /// Get the attribute name and value at the currently selected row.
+    pub fn selected_attr_value(&self) -> Option<(&str, &str)> {
+        let idx = self.table_state.selected()?;
+        let row = self.rows.get(idx)?;
+        Some((&row.attr_name, &row.value))
+    }
+
+    pub fn handle_key_event(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                let i = self.table_state.selected().unwrap_or(0);
+                if i > 0 {
+                    self.table_state.select(Some(i - 1));
+                }
+                Action::None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                let i = self.table_state.selected().unwrap_or(0);
+                if i + 1 < self.rows.len() {
+                    self.table_state.select(Some(i + 1));
+                }
+                Action::None
+            }
+            KeyCode::Char('e') | KeyCode::Enter => {
+                // Edit the selected attribute value
+                if let (Some(entry), Some((attr, val))) = (&self.entry, self.selected_attr_value())
+                {
+                    return Action::EditAttribute(
+                        entry.dn.clone(),
+                        attr.to_string(),
+                        val.to_string(),
+                    );
+                }
+                Action::None
+            }
+            KeyCode::Char('r') => Action::EntryRefresh,
+            _ => Action::None,
+        }
+    }
+}
+
+impl Component for DetailPanel {
+    fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        let border_style = if focused {
+            self.theme.border_focused
+        } else {
+            self.theme.border
+        };
+
+        let block = Block::default()
+            .title(" Details ")
+            .borders(Borders::ALL)
+            .border_style(border_style);
+
+        if let Some(ref entry) = self.entry {
+            // Build header with DN
+            let dn_line = Line::from(vec![
+                Span::styled("DN: ", self.theme.header),
+                Span::styled(&entry.dn, self.theme.normal),
+            ]);
+
+            // Build attribute rows
+            let rows: Vec<Row> = self
+                .rows
+                .iter()
+                .map(|r| {
+                    let attr_display = if r.is_first { r.attr_name.as_str() } else { "" };
+                    Row::new(vec![
+                        Cell::from(Span::styled(attr_display, self.theme.header)),
+                        Cell::from(Span::styled(&r.value, self.theme.normal)),
+                    ])
+                })
+                .collect();
+
+            let widths = [Constraint::Percentage(30), Constraint::Percentage(70)];
+
+            let table = Table::new(rows, widths)
+                .header(
+                    Row::new(vec![
+                        Cell::from(Span::styled("Attribute", self.theme.header)),
+                        Cell::from(Span::styled("Value", self.theme.header)),
+                    ])
+                    .style(self.theme.header),
+                )
+                .block(block)
+                .highlight_style(self.theme.selected.add_modifier(Modifier::BOLD));
+
+            frame.render_stateful_widget(table, area, &mut self.table_state.clone());
+
+            // Render DN above the table (inside the block)
+            let inner = area.inner(ratatui::layout::Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            if inner.height > 0 {
+                frame.render_widget(
+                    ratatui::widgets::Paragraph::new(dn_line),
+                    Rect {
+                        x: inner.x,
+                        y: inner.y,
+                        width: inner.width,
+                        height: 1,
+                    },
+                );
+            }
+        } else {
+            let empty = ratatui::widgets::Paragraph::new("Select an entry from the tree")
+                .style(self.theme.dimmed)
+                .block(block);
+            frame.render_widget(empty, area);
+        }
+    }
+
+    fn last_area(&self) -> Option<Rect> {
+        self.area
+    }
+}
+
+fn build_rows(entry: &LdapEntry) -> Vec<AttrRow> {
+    let mut rows = Vec::new();
+    for (name, values) in &entry.attributes {
+        for (i, val) in values.iter().enumerate() {
+            rows.push(AttrRow {
+                attr_name: name.clone(),
+                value: val.clone(),
+                is_first: i == 0,
+            });
+        }
+    }
+    rows
+}

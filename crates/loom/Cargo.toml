@@ -1,0 +1,21 @@
+[package]
+name = "loom"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A terminal-based LDAP browser"
+
+[[bin]]
+name = "loom"
+path = "src/main.rs"
+
+[dependencies]
+loom-tui = { workspace = true }
+loom-core = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+dirs = { workspace = true }

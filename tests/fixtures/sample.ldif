@@ -1,0 +1,46 @@
+dn: dc=example,dc=com
+objectClass: top
+objectClass: domain
+dc: example
+
+dn: ou=Users,dc=example,dc=com
+objectClass: top
+objectClass: organizationalUnit
+ou: Users
+description: User accounts
+
+dn: ou=Groups,dc=example,dc=com
+objectClass: top
+objectClass: organizationalUnit
+ou: Groups
+
+dn: cn=Alice Smith,ou=Users,dc=example,dc=com
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Alice Smith
+sn: Smith
+givenName: Alice
+mail: alice@example.com
+uid: asmith
+userPassword: secret123
+
+dn: cn=Bob Jones,ou=Users,dc=example,dc=com
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Bob Jones
+sn: Jones
+givenName: Bob
+mail: bob@example.com
+uid: bjones
+telephoneNumber: +1 555-0100
+telephoneNumber: +1 555-0101
+
+dn: cn=admins,ou=Groups,dc=example,dc=com
+objectClass: top
+objectClass: groupOfNames
+cn: admins
+member: cn=Alice Smith,ou=Users,dc=example,dc=com

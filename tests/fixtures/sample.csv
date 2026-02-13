@@ -1,0 +1,5 @@
+dn,objectClass,cn,sn,givenName,mail
+"dc=example,dc=com",top; domain,,,,
+"ou=Users,dc=example,dc=com",top; organizationalUnit,,,,
+"cn=Alice Smith,ou=Users,dc=example,dc=com",top; person; inetOrgPerson,Alice Smith,Smith,Alice,alice@example.com
+"cn=Bob Jones,ou=Users,dc=example,dc=com",top; person; inetOrgPerson,Bob Jones,Jones,Bob,bob@example.com

@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: loom
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: loom
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: loom
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: loom
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: loom.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} -p loom
+
+      - name: Build (native)
+        if: "!matrix.cross"
+        run: cargo build --release --target ${{ matrix.target }} -p loom
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../loom-${{ matrix.target }}.tar.gz ${{ matrix.artifact }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a ../../../loom-${{ matrix.target }}.zip ${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: loom-${{ matrix.target }}
+          path: loom-${{ matrix.target }}.*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

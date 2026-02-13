@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/loom",
+    "crates/loom-core",
+    "crates/loom-tui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT OR Apache-2.0"
+description = "A terminal-based LDAP browser"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# LDAP
+ldap3 = "0.12"
+
+# TUI
+ratatui = "0.28"
+crossterm = "0.28"
+tui-tree-widget = "0.22"
+tui-textarea = "0.6"
+
+# Fuzzy search
+nucleo = "0.5"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Export/Import
+csv = "1"
+rust_xlsxwriter = "0.80"
+calamine = "0.26"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tui-logger = "0.14"
+
+# Config
+config = "0.14"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Credentials
+keyring = "3"
+
+# Utilities
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+strum = { version = "0.26", features = ["derive"] }
+
+# Internal
+loom-core = { path = "crates/loom-core" }
+loom-tui = { path = "crates/loom-tui" }

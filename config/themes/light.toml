@@ -1,0 +1,20 @@
+[colors]
+border = { fg = "dark_gray" }
+border_focused = { fg = "blue" }
+selected = { fg = "white", bg = "blue" }
+header = { fg = "blue", modifiers = "BOLD" }
+normal = { fg = "black" }
+dimmed = { fg = "gray" }
+error = { fg = "red", modifiers = "BOLD" }
+warning = { fg = "yellow" }
+success = { fg = "green" }
+status_bar_bg = "gray"
+status_bar_fg = "black"
+tab_active = { fg = "blue", modifiers = "BOLD" }
+tab_inactive = { fg = "dark_gray" }
+tree_node = { fg = "black" }
+tree_node_expanded = { fg = "blue" }
+tree_node_selected = { fg = "white", bg = "blue" }
+popup_border = { fg = "blue" }
+popup_title = { fg = "blue", modifiers = "BOLD" }
+command_prompt = { fg = "blue" }

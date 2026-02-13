@@ -1,0 +1,36 @@
+[
+  {
+    "dn": "dc=example,dc=com",
+    "attributes": {
+      "objectClass": ["top", "domain"],
+      "dc": ["example"]
+    }
+  },
+  {
+    "dn": "ou=Users,dc=example,dc=com",
+    "attributes": {
+      "objectClass": ["top", "organizationalUnit"],
+      "ou": ["Users"]
+    }
+  },
+  {
+    "dn": "cn=Alice Smith,ou=Users,dc=example,dc=com",
+    "attributes": {
+      "objectClass": ["top", "person", "inetOrgPerson"],
+      "cn": ["Alice Smith"],
+      "sn": ["Smith"],
+      "givenName": ["Alice"],
+      "mail": ["alice@example.com"]
+    }
+  },
+  {
+    "dn": "cn=Bob Jones,ou=Users,dc=example,dc=com",
+    "attributes": {
+      "objectClass": ["top", "person", "inetOrgPerson"],
+      "cn": ["Bob Jones"],
+      "sn": ["Jones"],
+      "givenName": ["Bob"],
+      "mail": ["bob@example.com"]
+    }
+  }
+]

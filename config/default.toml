@@ -1,0 +1,16 @@
+[general]
+theme = "dark"
+tick_rate_ms = 250
+log_level = "info"
+
+[defaults]
+page_size = 500
+timeout_secs = 30
+tls_mode = "auto"
+referral_policy = "ignore"
+
+[export]
+csv_delimiter = ","
+csv_multivalue_separator = ";"
+json_pretty = true
+ldif_line_length = 76

@@ -1,0 +1,20 @@
+[colors]
+border = { fg = "#4c566a" }
+border_focused = { fg = "#88c0d0" }
+selected = { fg = "#2e3440", bg = "#88c0d0" }
+header = { fg = "#ebcb8b", modifiers = "BOLD" }
+normal = { fg = "#d8dee9" }
+dimmed = { fg = "#4c566a" }
+error = { fg = "#bf616a", modifiers = "BOLD" }
+warning = { fg = "#ebcb8b" }
+success = { fg = "#a3be8c" }
+status_bar_bg = "#3b4252"
+status_bar_fg = "#d8dee9"
+tab_active = { fg = "#88c0d0", modifiers = "BOLD" }
+tab_inactive = { fg = "#4c566a" }
+tree_node = { fg = "#d8dee9" }
+tree_node_expanded = { fg = "#a3be8c" }
+tree_node_selected = { fg = "#2e3440", bg = "#88c0d0" }
+popup_border = { fg = "#ebcb8b" }
+popup_title = { fg = "#ebcb8b", modifiers = "BOLD" }
+command_prompt = { fg = "#88c0d0" }
