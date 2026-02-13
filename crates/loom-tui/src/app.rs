@@ -9,7 +9,7 @@ use tracing::{debug, error};
 use loom_core::bulk::BulkMod;
 use loom_core::connection::LdapConnection;
 use loom_core::credentials::{CredentialMethod, CredentialProvider};
-use loom_core::schema::SchemaCache;
+use loom_core::schema::{AttributeSyntax, SchemaCache};
 use loom_core::tree::{DirectoryTree, TreeNode};
 
 use crate::action::{Action, ConnectionId, FocusTarget};
@@ -561,6 +561,92 @@ impl App {
         }
     }
 
+    fn spawn_dn_search(
+        &self,
+        conn_id: ConnectionId,
+        generation: u64,
+        query: String,
+        base_dn: String,
+    ) {
+        let tab = self.tabs.iter().find(|t| t.id == conn_id);
+        if let Some(tab) = tab {
+            let connection = tab.connection.clone();
+            let tx = self.action_tx.clone();
+
+            tokio::spawn(async move {
+                let mut conn = connection.lock().await;
+                let result = match conn
+                    .search_limited(&base_dn, &query, vec!["cn", "uid", "sn"], 50)
+                    .await
+                {
+                    Ok(entries) => Ok(entries),
+                    Err(e) if LdapConnection::is_connection_error(&e) => {
+                        if conn.reconnect().await.is_ok() {
+                            conn.search_limited(&base_dn, &query, vec!["cn", "uid", "sn"], 50)
+                                .await
+                        } else {
+                            Err(e)
+                        }
+                    }
+                    Err(e) => Err(e),
+                };
+
+                match result {
+                    Ok(entries) => {
+                        let _ = tx.send(Action::DnSearchResults {
+                            generation,
+                            entries,
+                        });
+                    }
+                    Err(e) => {
+                        // Silently log — no error popup spam during live search
+                        debug!("DN search failed: {}", e);
+                    }
+                }
+            });
+        }
+    }
+
+    fn spawn_add_multiple_values(
+        &self,
+        conn_id: ConnectionId,
+        dn: String,
+        attr: String,
+        values: Vec<String>,
+    ) {
+        let tab = self.tabs.iter().find(|t| t.id == conn_id);
+        if let Some(tab) = tab {
+            let connection = tab.connection.clone();
+            let tx = self.action_tx.clone();
+
+            tokio::spawn(async move {
+                let mut conn = connection.lock().await;
+                match conn.add_attribute_values(&dn, &attr, values).await {
+                    Ok(()) => {
+                        let _ = tx.send(Action::AttributeSaved(dn));
+                    }
+                    Err(e) => {
+                        let _ =
+                            tx.send(Action::ErrorMessage(format!("Failed to add values: {}", e)));
+                    }
+                }
+            });
+        }
+    }
+
+    /// Look up whether an attribute has DN syntax and whether it's multi-valued,
+    /// using the active tab's schema cache.
+    fn lookup_attr_schema(&self, attr: &str) -> (bool, bool) {
+        if let Some(tab) = self.active_tab() {
+            if let Some(ref schema) = tab.schema {
+                let is_dn = matches!(schema.attribute_syntax(attr), AttributeSyntax::Dn);
+                let multi_valued = !schema.is_single_valued(attr);
+                return (is_dn, multi_valued);
+            }
+        }
+        (false, true) // default: not DN, multi-valued
+    }
+
     /// Check if any popup/dialog is currently visible.
     fn popup_active(&self) -> bool {
         self.confirm_dialog.visible
@@ -892,10 +978,14 @@ impl App {
 
             // Attribute editing
             Action::EditAttribute(dn, attr, value) => {
-                self.attribute_editor.edit_value(dn, attr, value);
+                let (is_dn, multi_valued) = self.lookup_attr_schema(&attr);
+                self.attribute_editor
+                    .edit_value_with_options(dn, attr, value, is_dn, multi_valued);
             }
             Action::AddAttribute(dn, attr) => {
-                self.attribute_editor.add_value(dn, attr);
+                let (is_dn, multi_valued) = self.lookup_attr_schema(&attr);
+                self.attribute_editor
+                    .add_value_with_options(dn, attr, is_dn, multi_valued);
             }
             Action::SaveAttribute(result) => {
                 if let Some(id) = self.active_tab_id {
@@ -1115,7 +1205,42 @@ impl App {
                 self.command_panel.push_error(msg);
             }
 
-            Action::Tick | Action::Render | Action::Resize(_, _) | Action::None => {}
+            // DN search
+            Action::DnSearchRequest {
+                generation,
+                query,
+                base_dn,
+            } => {
+                if let Some(id) = self.active_tab_id {
+                    self.spawn_dn_search(id, generation, query, base_dn);
+                }
+            }
+            Action::DnSearchResults {
+                generation,
+                entries,
+            } => {
+                self.attribute_editor.receive_results(generation, entries);
+            }
+            Action::AddMultipleValues { dn, attr, values } => {
+                if let Some(id) = self.active_tab_id {
+                    self.spawn_add_multiple_values(id, dn, attr, values);
+                }
+            }
+
+            Action::Tick => {
+                // Dispatch tick to attribute editor for debounced DN search
+                if self.attribute_editor.visible {
+                    let base_dn = self
+                        .active_tab()
+                        .map(|t| t.directory_tree.root_dn.clone())
+                        .unwrap_or_default();
+                    let tick_action = self.attribute_editor.tick(&base_dn);
+                    if !matches!(tick_action, Action::None) {
+                        let _ = self.action_tx.send(tick_action);
+                    }
+                }
+            }
+            Action::Render | Action::Resize(_, _) | Action::None => {}
             _ => {}
         }
     }

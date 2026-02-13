@@ -92,6 +92,24 @@ impl LdapConnection {
         self.modify_entry(dn, mods).await
     }
 
+    /// Add multiple values to an attribute in a single modify operation.
+    pub async fn add_attribute_values(
+        &mut self,
+        dn: &str,
+        attr: &str,
+        values: Vec<String>,
+    ) -> Result<(), CoreError> {
+        debug!(
+            "add_attribute_values dn={} attr={} count={}",
+            dn,
+            attr,
+            values.len()
+        );
+        let value_set: HashSet<String> = values.into_iter().collect();
+        let mods = vec![Mod::Add(attr.to_string(), value_set)];
+        self.modify_entry(dn, mods).await
+    }
+
     /// Delete a specific value from an attribute.
     pub async fn delete_attribute_value(
         &mut self,

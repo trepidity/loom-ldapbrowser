@@ -32,6 +32,47 @@ impl LdapConnection {
         self.search(base_dn, Scope::Subtree, filter, attrs).await
     }
 
+    /// Search a subtree with the given filter, returning at most `limit` results.
+    /// Uses a single paged results request with page_size=limit and discards
+    /// the continuation cookie.
+    pub async fn search_limited(
+        &mut self,
+        base_dn: &str,
+        filter: &str,
+        attrs: Vec<&str>,
+        limit: usize,
+    ) -> Result<Vec<LdapEntry>, CoreError> {
+        let controls = vec![ldap3::controls::RawControl {
+            ctype: "1.2.840.113556.1.4.319".to_string(),
+            crit: false,
+            val: Some(encode_paged_results_control(limit as u32, &[])),
+        }];
+
+        let result = self
+            .ldap
+            .with_controls(controls)
+            .search(base_dn, Scope::Subtree, filter, attrs)
+            .await
+            .map_err(CoreError::Ldap)?;
+
+        let (entries, _res) = result
+            .success()
+            .map_err(|e| CoreError::SearchFailed(format!("{}", e)))?;
+
+        let entries: Vec<LdapEntry> = entries
+            .into_iter()
+            .take(limit)
+            .map(|e| LdapEntry::from_search_entry(SearchEntry::construct(e)))
+            .collect();
+
+        debug!(
+            "search_limited: got {} entries (limit={})",
+            entries.len(),
+            limit
+        );
+        Ok(entries)
+    }
+
     /// Perform a paged LDAP search.
     async fn search(
         &mut self,

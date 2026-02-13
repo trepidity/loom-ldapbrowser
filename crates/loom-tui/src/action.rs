@@ -66,6 +66,20 @@ pub enum Action {
     AddAttribute(String, String),          // dn, attr_name
     SaveAttribute(EditResult),
     AttributeSaved(String), // dn that was updated
+    DnSearchRequest {
+        generation: u64,
+        query: String,
+        base_dn: String,
+    },
+    DnSearchResults {
+        generation: u64,
+        entries: Vec<LdapEntry>,
+    },
+    AddMultipleValues {
+        dn: String,
+        attr: String,
+        values: Vec<String>,
+    },
 
     // Export / Import
     ShowExportDialog,
