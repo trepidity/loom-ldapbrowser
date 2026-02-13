@@ -108,6 +108,37 @@ impl CommandPanel {
     }
 }
 
+impl CommandPanel {
+    /// Render as a read-only status log with a custom title.
+    pub fn render_status(&self, frame: &mut Frame, area: Rect, title: &str) {
+        let block = Block::default()
+            .title(format!(" {} ", title))
+            .borders(Borders::ALL)
+            .border_style(self.theme.border);
+
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        let msg_height = inner.height as usize;
+        let start = self.messages.len().saturating_sub(msg_height);
+        let visible_messages = &self.messages[start..];
+
+        let lines: Vec<Line> = visible_messages
+            .iter()
+            .map(|msg| {
+                let style = if msg.is_error {
+                    self.theme.error
+                } else {
+                    self.theme.normal
+                };
+                Line::from(Span::styled(&msg.text, style))
+            })
+            .collect();
+
+        frame.render_widget(Paragraph::new(lines), inner);
+    }
+}
+
 impl Component for CommandPanel {
     fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
         let border_style = if focused {

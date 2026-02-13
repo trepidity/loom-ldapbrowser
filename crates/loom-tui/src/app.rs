@@ -1005,7 +1005,6 @@ impl App {
             Action::ConnMgrSelect(idx) => {
                 if let Some(profile) = self.config.connections.get(idx) {
                     self.connection_form.view_profile(idx, profile);
-                    self.focus.set(FocusTarget::ConnectionForm);
                 }
             }
             Action::ConnMgrNew => {
@@ -1434,31 +1433,31 @@ impl App {
     fn render(&mut self, frame: &mut ratatui::Frame) {
         let full = frame.area();
 
-        // Vertical: layout_bar (1) | secondary_bar (1) | content area | status bar (1)
+        // Vertical: layout_bar (1) | content area | status bar (1)
         let outer = Layout::vertical([
-            Constraint::Length(1), // layout bar
-            Constraint::Length(1), // secondary bar (tab bar or "Connections Manager")
+            Constraint::Length(1), // layout bar (includes tabs in Browser mode)
             Constraint::Min(3),    // content
             Constraint::Length(1), // status bar
         ])
         .split(full);
 
         let layout_bar_area = outer[0];
-        let secondary_bar_area = outer[1];
-        let content_area = outer[2];
-        let status_area = outer[3];
+        let content_area = outer[1];
+        let status_area = outer[2];
 
         self.layout_bar_area = Some(layout_bar_area);
 
-        // Render layout bar
-        self.layout_bar.render(frame, layout_bar_area);
+        // Render layout bar (includes tab bar in Browser mode)
+        self.layout_bar.render(
+            frame,
+            layout_bar_area,
+            &self.tab_bar.tabs,
+            self.tab_bar.active_tab,
+        );
 
         match self.active_layout {
             ActiveLayout::Browser => {
-                self.tab_area = Some(secondary_bar_area);
-
-                // Render tab bar in secondary row
-                self.tab_bar.render(frame, secondary_bar_area);
+                self.tab_area = Some(layout_bar_area);
 
                 // Horizontal: tree (25%) | right panels (75%)
                 let horizontal =
@@ -1485,13 +1484,12 @@ impl App {
                 let tree_focused = self.focus.is_focused(FocusTarget::TreePanel);
                 if let Some(tab) = self.active_tab() {
                     let items = TreePanel::build_tree_items(&tab.directory_tree.root);
-                    let label = tab.label.clone();
                     self.tree_panel.render_with_items(
                         frame,
                         tree_area,
                         tree_focused,
                         &items,
-                        &label,
+                        "Tree",
                     );
                 } else {
                     self.tree_panel.render_empty(frame, tree_area, tree_focused);
@@ -1510,17 +1508,20 @@ impl App {
                 );
             }
             ActiveLayout::Connections => {
-                // Render "Connections Manager" header in secondary bar
-                let header = ratatui::widgets::Paragraph::new(ratatui::text::Line::from(
-                    ratatui::text::Span::styled(" Connections Manager", self.theme.header),
-                ))
-                .style(self.theme.status_bar);
-                frame.render_widget(header, secondary_bar_area);
+                // Vertical: panels | status log
+                let conn_vertical = Layout::vertical([
+                    Constraint::Min(3),       // panels
+                    Constraint::Length(6),     // status log
+                ])
+                .split(content_area);
+
+                let panels_area = conn_vertical[0];
+                let conn_status_area = conn_vertical[1];
 
                 // Horizontal: connections tree (30%) | connection form (70%)
                 let horizontal =
                     Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
-                        .split(content_area);
+                        .split(panels_area);
 
                 let conn_tree_area = horizontal[0];
                 let conn_form_area = horizontal[1];
@@ -1556,6 +1557,9 @@ impl App {
                     conn_form_area,
                     self.focus.is_focused(FocusTarget::ConnectionForm),
                 );
+
+                // Render status log
+                self.command_panel.render_status(frame, conn_status_area, "Status");
             }
         }
 
