@@ -37,6 +37,8 @@ fn resolve_global(key: KeyEvent) -> Option<Action> {
         (KeyModifiers::CONTROL, KeyCode::Char('s')) => Some(Action::ShowSchemaViewer),
         // Log panel
         (KeyModifiers::CONTROL, KeyCode::Char('l')) => Some(Action::ToggleLogPanel),
+        // Save current ad-hoc connection
+        (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Action::SaveCurrentConnection),
         _ => None,
     }
 }
@@ -126,5 +128,11 @@ mod tests {
     fn test_ctrl_s_schema() {
         let action = resolve_key(ctrl(KeyCode::Char('s')), FocusTarget::TreePanel);
         assert!(matches!(action, Action::ShowSchemaViewer));
+    }
+
+    #[test]
+    fn test_ctrl_w_save_connection() {
+        let action = resolve_key(ctrl(KeyCode::Char('w')), FocusTarget::TreePanel);
+        assert!(matches!(action, Action::SaveCurrentConnection));
     }
 }

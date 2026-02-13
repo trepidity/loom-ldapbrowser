@@ -1,5 +1,6 @@
 use crate::components::attribute_editor::EditResult;
 use crate::components::bulk_update_dialog::BulkOp;
+use crate::config::ConnectionProfile;
 use loom_core::entry::LdapEntry;
 use loom_core::schema::SchemaCache;
 use loom_core::server_detect::ServerType;
@@ -31,10 +32,15 @@ pub enum Action {
 
     // Connection
     ShowConnectDialog,
+    ShowNewConnectionForm,
     ConnectByIndex(usize),
+    ConnectAdHoc(ConnectionProfile, String), // profile + password (never saved)
+    PromptCredentials(ConnectionProfile),    // show credential prompt for profile
+    ConnectWithCredentials(ConnectionProfile, String), // retry with user-provided credentials
     Connected(ConnectionId, String, ServerType),
     Disconnected(ConnectionId),
     ConnectionError(String),
+    SaveCurrentConnection,
 
     // Tree Navigation
     TreeExpand(String),

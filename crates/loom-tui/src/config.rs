@@ -12,10 +12,13 @@ pub struct ConnectionProfile {
     pub port: u16,
     #[serde(default)]
     pub tls_mode: TlsMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bind_dn: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub base_dn: Option<String>,
     #[serde(default)]
     pub credential_method: CredentialMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password_command: Option<String>,
     #[serde(default = "default_page_size")]
     pub page_size: u32,
@@ -117,6 +120,43 @@ impl AppConfig {
     /// Parse config from a TOML string.
     pub fn from_toml(content: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(content)
+    }
+
+    /// Append a connection profile to the config file on disk.
+    /// Creates the config directory and file if they don't exist.
+    /// The password is never written — only the profile metadata.
+    pub fn append_connection(profile: &ConnectionProfile) -> Result<(), String> {
+        let config_dir = dirs::config_dir()
+            .map(|d| d.join("loom"))
+            .ok_or_else(|| "Cannot determine config directory".to_string())?;
+
+        std::fs::create_dir_all(&config_dir)
+            .map_err(|e| format!("Failed to create config dir: {}", e))?;
+
+        let config_path = config_dir.join("config.toml");
+
+        // Read existing content (or start empty)
+        let mut content = if config_path.exists() {
+            std::fs::read_to_string(&config_path)
+                .map_err(|e| format!("Failed to read config: {}", e))?
+        } else {
+            String::new()
+        };
+
+        // Serialize just the profile as a [[connections]] block
+        let block = toml::to_string(profile)
+            .map_err(|e| format!("Failed to serialize profile: {}", e))?;
+
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str("\n[[connections]]\n");
+        content.push_str(&block);
+
+        std::fs::write(&config_path, content)
+            .map_err(|e| format!("Failed to write config: {}", e))?;
+
+        Ok(())
     }
 }
 

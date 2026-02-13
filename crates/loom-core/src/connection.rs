@@ -21,6 +21,28 @@ impl Default for TlsMode {
     }
 }
 
+impl TlsMode {
+    /// Cycle to the next TLS mode (for F2 toggling in UI).
+    pub fn next(&self) -> Self {
+        match self {
+            TlsMode::Auto => TlsMode::Ldaps,
+            TlsMode::Ldaps => TlsMode::StartTls,
+            TlsMode::StartTls => TlsMode::None,
+            TlsMode::None => TlsMode::Auto,
+        }
+    }
+
+    /// Human-readable label for display.
+    pub fn label(&self) -> &'static str {
+        match self {
+            TlsMode::Auto => "Auto",
+            TlsMode::Ldaps => "LDAPS",
+            TlsMode::StartTls => "StartTLS",
+            TlsMode::None => "None",
+        }
+    }
+}
+
 /// Settings for an LDAP connection.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ConnectionSettings {

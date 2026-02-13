@@ -52,7 +52,8 @@ impl ConnectDialog {
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 let i = self.list_state.selected().unwrap_or(0);
-                if i + 1 < self.profiles.len() {
+                // +1 for the "New Connection..." entry at the top
+                if i + 1 < self.profiles.len() + 1 {
                     self.list_state.select(Some(i + 1));
                 }
                 Action::None
@@ -60,7 +61,12 @@ impl ConnectDialog {
             KeyCode::Enter => {
                 if let Some(idx) = self.list_state.selected() {
                     self.visible = false;
-                    Action::ConnectByIndex(idx)
+                    if idx == 0 {
+                        // "New Connection..." entry
+                        Action::ShowNewConnectionForm
+                    } else {
+                        Action::ConnectByIndex(idx - 1)
+                    }
                 } else {
                     Action::None
                 }
@@ -78,8 +84,10 @@ impl ConnectDialog {
             return;
         }
 
+        // +1 for the "New Connection..." entry
+        let item_count = self.profiles.len() + 1;
         let popup_width = (full.width as u32 * 60 / 100).min(70) as u16;
-        let popup_height = (self.profiles.len() as u16 + 4).min(full.height).max(6);
+        let popup_height = (item_count as u16 + 4).min(full.height).max(6);
 
         let x = full.x + (full.width.saturating_sub(popup_width)) / 2;
         let y = full.y + (full.height.saturating_sub(popup_height)) / 2;
@@ -96,15 +104,6 @@ impl ConnectDialog {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        if self.profiles.is_empty() {
-            let msg = Paragraph::new(
-                "No connection profiles configured.\nAdd profiles to ~/.config/loom/config.toml",
-            )
-            .style(self.theme.dimmed);
-            frame.render_widget(msg, inner);
-            return;
-        }
-
         // Layout: hint (1 line) | list
         let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(inner);
 
@@ -118,17 +117,21 @@ impl ConnectDialog {
         ]);
         frame.render_widget(Paragraph::new(hint), layout[0]);
 
-        let items: Vec<ListItem> = self
-            .profiles
-            .iter()
-            .map(|p| {
-                let line = Line::from(vec![
-                    Span::styled(&p.name, self.theme.header),
-                    Span::styled(format!("  {}:{}", p.host, p.port), self.theme.dimmed),
-                ]);
-                ListItem::new(line)
-            })
-            .collect();
+        // Build items: "New Connection..." first, then saved profiles
+        let mut items: Vec<ListItem> = Vec::with_capacity(item_count);
+
+        items.push(ListItem::new(Line::from(Span::styled(
+            "+ New Connection...",
+            self.theme.success,
+        ))));
+
+        for p in &self.profiles {
+            let line = Line::from(vec![
+                Span::styled(&p.name, self.theme.header),
+                Span::styled(format!("  {}:{}", p.host, p.port), self.theme.dimmed),
+            ]);
+            items.push(ListItem::new(line));
+        }
 
         let list =
             List::new(items).highlight_style(self.theme.selected.add_modifier(Modifier::BOLD));

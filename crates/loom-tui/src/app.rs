@@ -19,9 +19,11 @@ use crate::components::bulk_update_dialog::BulkUpdateDialog;
 use crate::components::command_panel::CommandPanel;
 use crate::components::confirm_dialog::ConfirmDialog;
 use crate::components::connect_dialog::ConnectDialog;
+use crate::components::credential_prompt::CredentialPromptDialog;
 use crate::components::detail_panel::DetailPanel;
 use crate::components::export_dialog::ExportDialog;
 use crate::components::log_panel::LogPanel;
+use crate::components::new_connection_dialog::NewConnectionDialog;
 use crate::components::schema_viewer::SchemaViewer;
 use crate::components::search_dialog::SearchDialog;
 use crate::components::status_bar::StatusBar;
@@ -67,12 +69,17 @@ pub struct App {
     // Popup/dialogs
     confirm_dialog: ConfirmDialog,
     connect_dialog: ConnectDialog,
+    new_connection_dialog: NewConnectionDialog,
+    credential_prompt: CredentialPromptDialog,
     search_dialog: SearchDialog,
     attribute_editor: AttributeEditor,
     export_dialog: ExportDialog,
     bulk_update_dialog: BulkUpdateDialog,
     schema_viewer: SchemaViewer,
     log_panel: LogPanel,
+
+    // Ad-hoc connection tracking (for save-to-config)
+    last_adhoc_profile: Option<ConnectionProfile>,
 
     // Track areas for mouse hit-testing
     tree_area: Option<Rect>,
@@ -105,12 +112,15 @@ impl App {
             focus: FocusManager::new(),
             confirm_dialog: ConfirmDialog::new(theme.clone()),
             connect_dialog: ConnectDialog::new(theme.clone()),
+            new_connection_dialog: NewConnectionDialog::new(theme.clone()),
+            credential_prompt: CredentialPromptDialog::new(theme.clone()),
             search_dialog: SearchDialog::new(theme.clone()),
             attribute_editor: AttributeEditor::new(theme.clone()),
             export_dialog: ExportDialog::new(theme.clone()),
             bulk_update_dialog: BulkUpdateDialog::new(theme.clone()),
             schema_viewer: SchemaViewer::new(theme.clone()),
             log_panel: LogPanel::new(theme),
+            last_adhoc_profile: None,
             tree_area: None,
             detail_area: None,
             command_area: None,
@@ -137,26 +147,51 @@ impl App {
     }
 
     /// Connect to the first configured connection profile.
-    pub async fn connect_first_profile(&mut self) -> anyhow::Result<()> {
+    /// Auth errors are handled gracefully by showing a credential prompt.
+    pub async fn connect_first_profile(&mut self) {
         if !self.config.connections.is_empty() {
-            self.connect_profile_at(0).await?;
+            let profile = self.config.connections[0].clone();
+            match self.connect_profile(&profile).await {
+                Ok(()) => {}
+                Err(e) if is_auth_error(&e) => {
+                    self.command_panel
+                        .push_error(format!("Authentication failed: {}", e));
+                    self.credential_prompt.show(profile);
+                }
+                Err(e) => {
+                    self.command_panel
+                        .push_error(format!("Connection failed: {}", e));
+                }
+            }
         } else {
             self.command_panel.push_message(
                 "No connections configured. Press Ctrl+T or add profiles to ~/.config/loom/config.toml".to_string(),
             );
         }
-        Ok(())
-    }
-
-    async fn connect_profile_at(&mut self, index: usize) -> anyhow::Result<()> {
-        let profile = self.config.connections.get(index).cloned();
-        if let Some(profile) = profile {
-            self.connect_profile(&profile).await?;
-        }
-        Ok(())
     }
 
     async fn connect_profile(&mut self, profile: &ConnectionProfile) -> anyhow::Result<()> {
+        if profile.bind_dn.is_some() {
+            match resolve_password(profile) {
+                Ok(password) if !password.is_empty() => {
+                    self.connect_with_password(profile, &password).await
+                }
+                _ => {
+                    // No password available — need interactive prompt
+                    self.credential_prompt.show(profile.clone());
+                    Ok(())
+                }
+            }
+        } else {
+            self.connect_with_password(profile, "").await
+        }
+    }
+
+    async fn connect_with_password(
+        &mut self,
+        profile: &ConnectionProfile,
+        password: &str,
+    ) -> anyhow::Result<()> {
         self.command_panel
             .push_message(format!("Connecting to {}...", profile.host));
 
@@ -165,8 +200,7 @@ impl App {
 
         // Bind with credential resolution
         if let Some(ref bind_dn) = profile.bind_dn {
-            let password = resolve_password(profile)?;
-            conn.simple_bind(bind_dn, &password).await?;
+            conn.simple_bind(bind_dn, password).await?;
         } else {
             conn.anonymous_bind().await?;
         }
@@ -462,6 +496,8 @@ impl App {
     fn popup_active(&self) -> bool {
         self.confirm_dialog.visible
             || self.connect_dialog.visible
+            || self.new_connection_dialog.visible
+            || self.credential_prompt.visible
             || self.search_dialog.visible
             || self.attribute_editor.visible
             || self.export_dialog.visible
@@ -492,6 +528,10 @@ impl App {
                             self.confirm_dialog.handle_key_event(key)
                         } else if self.connect_dialog.visible {
                             self.connect_dialog.handle_key_event(key)
+                        } else if self.new_connection_dialog.visible {
+                            self.new_connection_dialog.handle_key_event(key)
+                        } else if self.credential_prompt.visible {
+                            self.credential_prompt.handle_key_event(key)
                         } else if self.search_dialog.visible {
                             self.search_dialog.handle_key_event(key)
                         } else if self.export_dialog.visible {
@@ -504,14 +544,18 @@ impl App {
                             self.log_panel.handle_key_event(key)
                         } else if self.command_panel.input_active {
                             self.command_panel.handle_input_key(key)
-                        } else if self.focus.current() == FocusTarget::TreePanel {
-                            self.tree_panel.handle_key_event(key)
-                        } else if self.focus.current() == FocusTarget::DetailPanel {
-                            self.detail_panel.handle_key_event(key)
-                        } else if self.focus.current() == FocusTarget::CommandPanel {
-                            self.command_panel.handle_input_key(key)
                         } else {
-                            keymap::resolve_key(key, self.focus.current())
+                            // Try panel-specific handler first, fall back to global keymap
+                            let panel_action = match self.focus.current() {
+                                FocusTarget::TreePanel => self.tree_panel.handle_key_event(key),
+                                FocusTarget::DetailPanel => self.detail_panel.handle_key_event(key),
+                                FocusTarget::CommandPanel => self.command_panel.handle_input_key(key),
+                            };
+                            if matches!(panel_action, Action::None) {
+                                keymap::resolve_key(key, self.focus.current())
+                            } else {
+                                panel_action
+                            }
                         };
                         let _ = self.action_tx.send(action);
                     }
@@ -610,10 +654,89 @@ impl App {
             Action::ShowConnectDialog => {
                 self.connect_dialog.show(self.config.connections.clone());
             }
+            Action::ShowNewConnectionForm => {
+                self.connect_dialog.hide();
+                self.new_connection_dialog.show();
+            }
             Action::ConnectByIndex(idx) => {
-                if let Err(e) = self.connect_profile_at(idx).await {
-                    self.command_panel
-                        .push_error(format!("Connection failed: {}", e));
+                let profile = self.config.connections.get(idx).cloned();
+                if let Some(profile) = profile {
+                    match self.connect_profile(&profile).await {
+                        Ok(()) => {}
+                        Err(e) if is_auth_error(&e) => {
+                            self.command_panel
+                                .push_error(format!("Authentication failed: {}", e));
+                            self.credential_prompt.show(profile);
+                        }
+                        Err(e) => {
+                            self.command_panel
+                                .push_error(format!("Connection failed: {}", e));
+                        }
+                    }
+                }
+            }
+            Action::ConnectAdHoc(profile, password) => {
+                let profile_clone = profile.clone();
+                match self.connect_with_password(&profile, &password).await {
+                    Ok(()) => {
+                        self.last_adhoc_profile = Some(profile_clone);
+                        self.command_panel.push_message(
+                            "Tip: Press Ctrl+W to save this connection to config".to_string(),
+                        );
+                    }
+                    Err(e) if is_auth_error(&e) => {
+                        self.command_panel
+                            .push_error(format!("Authentication failed: {}", e));
+                        self.credential_prompt.show(profile_clone);
+                    }
+                    Err(e) => {
+                        self.command_panel
+                            .push_error(format!("Connection failed: {}", e));
+                    }
+                }
+            }
+            Action::PromptCredentials(profile) => {
+                self.credential_prompt.show(profile);
+            }
+            Action::ConnectWithCredentials(profile, password) => {
+                let profile_clone = profile.clone();
+                match self.connect_with_password(&profile, &password).await {
+                    Ok(()) => {
+                        self.command_panel.push_message(format!(
+                            "Authenticated as {}",
+                            profile.bind_dn.as_deref().unwrap_or("anonymous")
+                        ));
+                    }
+                    Err(e) if is_auth_error(&e) => {
+                        self.command_panel
+                            .push_error(format!("Authentication failed: {}", e));
+                        self.credential_prompt.show(profile_clone);
+                    }
+                    Err(e) => {
+                        self.command_panel
+                            .push_error(format!("Connection failed: {}", e));
+                    }
+                }
+            }
+            Action::SaveCurrentConnection => {
+                if let Some(profile) = self.last_adhoc_profile.take() {
+                    match AppConfig::append_connection(&profile) {
+                        Ok(()) => {
+                            self.command_panel.push_message(format!(
+                                "Saved connection '{}' to config",
+                                profile.name
+                            ));
+                            self.config.connections.push(profile);
+                        }
+                        Err(e) => {
+                            self.command_panel
+                                .push_error(format!("Failed to save connection: {}", e));
+                        }
+                    }
+                } else {
+                    self.command_panel.push_message(
+                        "No ad-hoc connection to save".to_string(),
+                    );
                 }
             }
             Action::CloseTab(id) => {
@@ -839,6 +962,8 @@ impl App {
             Action::ClosePopup => {
                 self.confirm_dialog.hide();
                 self.connect_dialog.hide();
+                self.new_connection_dialog.hide();
+                self.credential_prompt.hide();
                 self.search_dialog.hide();
                 self.attribute_editor.hide();
                 self.export_dialog.hide();
@@ -948,6 +1073,12 @@ impl App {
         if self.connect_dialog.visible {
             self.connect_dialog.render(frame, full);
         }
+        if self.new_connection_dialog.visible {
+            self.new_connection_dialog.render(frame, full);
+        }
+        if self.credential_prompt.visible {
+            self.credential_prompt.render(frame, full);
+        }
         if self.search_dialog.visible {
             self.search_dialog.render(frame, full);
         }
@@ -970,13 +1101,11 @@ impl App {
 }
 
 /// Resolve password from the connection profile's credential method.
+/// Returns empty string for Prompt method when LOOM_PASSWORD is not set,
+/// which signals the caller to show an interactive credential prompt.
 fn resolve_password(profile: &ConnectionProfile) -> anyhow::Result<String> {
     match profile.credential_method {
-        CredentialMethod::Prompt => {
-            // In TUI context, try env var fallback for now.
-            // Full TUI prompt dialog will be added in a future iteration.
-            Ok(std::env::var("LOOM_PASSWORD").unwrap_or_default())
-        }
+        CredentialMethod::Prompt => Ok(std::env::var("LOOM_PASSWORD").unwrap_or_default()),
         CredentialMethod::Command => {
             let cmd = profile.password_command.as_deref().ok_or_else(|| {
                 anyhow::anyhow!("credential_method is 'command' but no password_command configured")
@@ -985,4 +1114,13 @@ fn resolve_password(profile: &ConnectionProfile) -> anyhow::Result<String> {
         }
         CredentialMethod::Keychain => Ok(CredentialProvider::from_keychain(&profile.name)?),
     }
+}
+
+/// Check if an error is an LDAP authentication/bind failure (rc=49 etc.).
+fn is_auth_error(err: &anyhow::Error) -> bool {
+    let msg = err.to_string().to_lowercase();
+    msg.contains("bind failed")
+        || msg.contains("rc=49")
+        || msg.contains("invalid credentials")
+        || msg.contains("password must be provided")
 }

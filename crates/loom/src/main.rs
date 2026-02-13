@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
 
     // Create and run the app
     let mut app = App::new(config);
-    app.connect_first_profile().await?;
+    app.connect_first_profile().await;
     app.run().await?;
 
     info!("Loom exiting");
