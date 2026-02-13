@@ -24,6 +24,8 @@ pub struct ConnectionProfile {
     pub page_size: u32,
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    #[serde(default)]
+    pub relax_rules: bool,
 }
 
 fn default_port() -> u16 {
@@ -47,6 +49,7 @@ impl ConnectionProfile {
             base_dn: self.base_dn.clone(),
             page_size: self.page_size,
             timeout_secs: self.timeout_secs,
+            relax_rules: self.relax_rules,
         }
     }
 }
@@ -228,6 +231,7 @@ timeout_secs = 60
             password_command: None,
             page_size: 500,
             timeout_secs: 30,
+            relax_rules: false,
         };
 
         let settings = profile.to_connection_settings();

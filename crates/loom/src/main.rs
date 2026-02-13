@@ -34,15 +34,13 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize logging to file
-    let log_dir = dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("loom");
+    // Initialize logging to ./logs/ directory at debug level
+    let log_dir = std::path::PathBuf::from("./logs");
     std::fs::create_dir_all(&log_dir)?;
     let log_file = std::fs::File::create(log_dir.join("loom.log"))?;
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("loom=info".parse()?))
+        .with_env_filter(EnvFilter::from_default_env().add_directive("loom=debug".parse()?))
         .with_writer(log_file)
         .with_ansi(false)
         .init();
@@ -66,6 +64,7 @@ async fn main() -> Result<()> {
             password_command: None,
             page_size: 500,
             timeout_secs: 30,
+            relax_rules: false,
         };
         config.connections.insert(0, profile);
     }

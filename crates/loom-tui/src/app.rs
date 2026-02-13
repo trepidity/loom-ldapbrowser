@@ -375,6 +375,10 @@ impl App {
             let tx = self.action_tx.clone();
 
             tokio::spawn(async move {
+                debug!(
+                    "spawn_save_attribute: dn={} op={:?} new_value={}",
+                    result.dn, result.op, result.new_value
+                );
                 let mut conn = connection.lock().await;
                 let modify_result = match &result.op {
                     EditOp::Replace { attr, old_value } => {

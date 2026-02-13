@@ -57,6 +57,10 @@ pub struct ConnectionSettings {
     pub page_size: u32,
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    /// Send the Relax Rules control with modify/delete operations
+    /// to bypass server-side schema violations from directory plugins.
+    #[serde(default)]
+    pub relax_rules: bool,
 }
 
 fn default_port() -> u16 {
