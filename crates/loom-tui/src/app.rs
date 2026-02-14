@@ -42,6 +42,17 @@ use crate::keymap::Keymap;
 use crate::theme::Theme;
 use crate::tui;
 
+/// Which divider the user is dragging.
+#[derive(Debug, Clone, Copy)]
+enum DragTarget {
+    /// Vertical divider between tree panel and detail/command panels.
+    Tree,
+    /// Horizontal divider between detail panel and command panel.
+    Detail,
+    /// Vertical divider in connections layout.
+    ConnTree,
+}
+
 /// Backend for a connection tab — either live LDAP or offline/example.
 enum TabBackend {
     Live(Arc<Mutex<LdapConnection>>),
@@ -54,6 +65,7 @@ struct ConnectionTab {
     label: String,
     host: String,
     server_type: String,
+    subschema_dn: Option<String>,
     backend: TabBackend,
     directory_tree: DirectoryTree,
     schema: Option<SchemaCache>,
@@ -116,6 +128,12 @@ pub struct App {
     conn_tree_area: Option<Rect>,
     conn_form_area: Option<Rect>,
 
+    // Resizable panel splits (percentages, 10..=90)
+    tree_split_pct: u16,          // tree panel width as % of content area
+    detail_split_pct: u16,        // detail panel height as % of right area
+    conn_tree_split_pct: u16,     // connections tree width as % of content area
+    drag_target: Option<DragTarget>,
+
     // Async communication
     action_tx: tokio::sync::mpsc::UnboundedSender<Action>,
     action_rx: tokio::sync::mpsc::UnboundedReceiver<Action>,
@@ -166,6 +184,10 @@ impl App {
             layout_bar_area: None,
             conn_tree_area: None,
             conn_form_area: None,
+            tree_split_pct: 25,
+            detail_split_pct: 75,
+            conn_tree_split_pct: 30,
+            drag_target: None,
             action_tx,
             action_rx,
         }
@@ -245,6 +267,7 @@ impl App {
             label: "Example Directory".to_string(),
             host: "contoso.example".to_string(),
             server_type: "Active Directory (Example)".to_string(),
+            subschema_dn: None,
             backend: TabBackend::Offline(offline),
             directory_tree: DirectoryTree::new(base_dn.clone()),
             schema: Some(schema),
@@ -280,16 +303,16 @@ impl App {
         }
 
         // Read RootDSE to detect server type and auto-discover base DN
-        let server_type_str = match conn.read_root_dse().await {
+        let (server_type_str, subschema_dn) = match conn.read_root_dse().await {
             Ok(root_dse) => {
                 let st = root_dse.server_type.to_string();
                 self.command_panel
                     .push_message(format!("Server type: {}", st));
-                st
+                (st, root_dse.subschema_subentry)
             }
             Err(e) => {
                 debug!("RootDSE read failed (non-fatal): {}", e);
-                "LDAP".to_string()
+                ("LDAP".to_string(), None)
             }
         };
 
@@ -310,6 +333,7 @@ impl App {
             label: label.clone(),
             host,
             server_type: server_type_str,
+            subschema_dn,
             backend: TabBackend::Live(connection),
             directory_tree,
             schema: None,
@@ -539,9 +563,10 @@ impl App {
                 }
                 TabBackend::Live(connection) => {
                     let connection = connection.clone();
+                    let subschema_dn = tab.subschema_dn.clone();
                     tokio::spawn(async move {
                         let mut conn = connection.lock().await;
-                        match conn.load_schema(None).await {
+                        match conn.load_schema(subschema_dn.as_deref()).await {
                             Ok(schema) => {
                                 let _ = tx.send(Action::SchemaLoaded(conn_id, Box::new(schema)));
                             }
@@ -980,14 +1005,21 @@ impl App {
         Ok(())
     }
 
-    fn handle_mouse(&self, mouse: crossterm::event::MouseEvent) -> Action {
-        // Only handle click events, ignore popups
+    fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) -> Action {
+        // Popups block mouse events; also clear any drag
         if self.popup_active() {
+            self.drag_target = None;
             return Action::None;
         }
 
         match mouse.kind {
             MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                // Check if click is on a panel divider (start drag)
+                if let Some(target) = self.divider_hit(mouse.column, mouse.row) {
+                    self.drag_target = Some(target);
+                    return Action::None;
+                }
+
                 let pos = Rect::new(mouse.column, mouse.row, 1, 1);
 
                 // Check layout bar clicks
@@ -1035,7 +1067,98 @@ impl App {
                 }
                 Action::None
             }
+            MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
+                if let Some(target) = self.drag_target {
+                    self.apply_drag(target, mouse.column, mouse.row);
+                }
+                Action::None
+            }
+            MouseEventKind::Up(_) => {
+                self.drag_target = None;
+                Action::None
+            }
             _ => Action::None,
+        }
+    }
+
+    /// Check if a mouse position is on (or within 1 cell of) a panel divider.
+    fn divider_hit(&self, col: u16, row: u16) -> Option<DragTarget> {
+        match self.active_layout {
+            ActiveLayout::Browser => {
+                // Vertical divider: right edge of tree panel
+                if let Some(tree) = self.tree_area {
+                    let divider_col = tree.x + tree.width;
+                    if col.abs_diff(divider_col) <= 1
+                        && row >= tree.y
+                        && row < tree.y + tree.height
+                    {
+                        return Some(DragTarget::Tree);
+                    }
+                }
+                // Horizontal divider: bottom edge of detail panel
+                if let Some(detail) = self.detail_area {
+                    let divider_row = detail.y + detail.height;
+                    if row.abs_diff(divider_row) <= 1
+                        && col >= detail.x
+                        && col < detail.x + detail.width
+                    {
+                        return Some(DragTarget::Detail);
+                    }
+                }
+            }
+            ActiveLayout::Connections => {
+                // Vertical divider: right edge of connections tree
+                if let Some(ct) = self.conn_tree_area {
+                    let divider_col = ct.x + ct.width;
+                    if col.abs_diff(divider_col) <= 1
+                        && row >= ct.y
+                        && row < ct.y + ct.height
+                    {
+                        return Some(DragTarget::ConnTree);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Update split percentages based on the current drag position.
+    fn apply_drag(&mut self, target: DragTarget, col: u16, row: u16) {
+        // We need a reference area to compute the percentage from pixel position.
+        match target {
+            DragTarget::Tree => {
+                if let (Some(tree), Some(detail)) = (self.tree_area, self.detail_area) {
+                    let total_w = (tree.width + detail.width) as u32;
+                    if total_w == 0 {
+                        return;
+                    }
+                    let offset = col.saturating_sub(tree.x) as u32;
+                    let pct = ((offset * 100) / total_w) as u16;
+                    self.tree_split_pct = pct.clamp(10, 90);
+                }
+            }
+            DragTarget::Detail => {
+                if let (Some(detail), Some(cmd)) = (self.detail_area, self.command_area) {
+                    let total_h = (detail.height + cmd.height) as u32;
+                    if total_h == 0 {
+                        return;
+                    }
+                    let offset = row.saturating_sub(detail.y) as u32;
+                    let pct = ((offset * 100) / total_h) as u16;
+                    self.detail_split_pct = pct.clamp(10, 90);
+                }
+            }
+            DragTarget::ConnTree => {
+                if let (Some(ct), Some(cf)) = (self.conn_tree_area, self.conn_form_area) {
+                    let total_w = (ct.width + cf.width) as u32;
+                    if total_w == 0 {
+                        return;
+                    }
+                    let offset = col.saturating_sub(ct.x) as u32;
+                    let pct = ((offset * 100) / total_w) as u16;
+                    self.conn_tree_split_pct = pct.clamp(10, 90);
+                }
+            }
         }
     }
 
@@ -1724,17 +1847,19 @@ impl App {
             ActiveLayout::Browser => {
                 self.tab_area = Some(layout_bar_area);
 
-                // Horizontal: tree (25%) | right panels (75%)
+                // Horizontal: tree | right panels (draggable split)
+                let tp = self.tree_split_pct;
                 let horizontal =
-                    Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
+                    Layout::horizontal([Constraint::Percentage(tp), Constraint::Percentage(100 - tp)])
                         .split(content_area);
 
                 let tree_area = horizontal[0];
                 let right_area = horizontal[1];
 
-                // Right side: detail (75%) | command (25%)
+                // Right side: detail | command (draggable split)
+                let dp = self.detail_split_pct;
                 let right_vertical =
-                    Layout::vertical([Constraint::Percentage(75), Constraint::Percentage(25)])
+                    Layout::vertical([Constraint::Percentage(dp), Constraint::Percentage(100 - dp)])
                         .split(right_area);
 
                 let detail_area = right_vertical[0];
@@ -1783,9 +1908,10 @@ impl App {
                 let panels_area = conn_vertical[0];
                 let conn_status_area = conn_vertical[1];
 
-                // Horizontal: connections tree (30%) | connection form (70%)
+                // Horizontal: connections tree | connection form (draggable split)
+                let cp = self.conn_tree_split_pct;
                 let horizontal =
-                    Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
+                    Layout::horizontal([Constraint::Percentage(cp), Constraint::Percentage(100 - cp)])
                         .split(panels_area);
 
                 let conn_tree_area = horizontal[0];

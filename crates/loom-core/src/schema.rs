@@ -154,13 +154,17 @@ impl LdapConnection {
         &mut self,
         subschema_dn: Option<&str>,
     ) -> Result<SchemaCache, CoreError> {
-        // Determine schema DN
+        // Determine schema DN — prefer the one discovered from root DSE
         let schema_dn = match subschema_dn {
-            Some(dn) => dn.to_string(),
-            None => "cn=Subschema".to_string(),
+            Some(dn) => {
+                debug!("Loading schema from subschemaSubentry: {}", dn);
+                dn.to_string()
+            }
+            None => {
+                debug!("No subschemaSubentry found in root DSE, falling back to cn=Subschema");
+                "cn=Subschema".to_string()
+            }
         };
-
-        debug!("Loading schema from: {}", schema_dn);
 
         let result = self
             .ldap
