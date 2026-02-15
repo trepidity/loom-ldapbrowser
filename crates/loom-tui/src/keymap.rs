@@ -566,7 +566,7 @@ mod tests {
             Action::PrevTab
         ));
         assert!(matches!(
-            km.resolve(ctrl(KeyCode::Char('b')), FocusTarget::TreePanel),
+            km.resolve(key(KeyCode::F(8)), FocusTarget::TreePanel),
             Action::ShowBulkUpdateDialog
         ));
         assert!(matches!(

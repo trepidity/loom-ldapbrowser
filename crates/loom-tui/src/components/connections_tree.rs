@@ -80,32 +80,6 @@ impl ConnectionsTree {
                 self.tree_state.key_left();
                 Action::None
             }
-            KeyCode::Enter => {
-                if let Some(key) = self.selected_key().cloned() {
-                    if key == "action:new" {
-                        return Action::ConnMgrNew;
-                    }
-                    if let Some(id) = self
-                        .active_keys
-                        .iter()
-                        .find(|(k, _)| *k == key)
-                        .map(|(_, id)| *id)
-                    {
-                        return Action::SwitchTab(id);
-                    }
-                    if let Some(idx) = self
-                        .profile_keys
-                        .iter()
-                        .find(|(k, _)| *k == key)
-                        .map(|(_, idx)| *idx)
-                    {
-                        return Action::ConnMgrSelect(idx);
-                    }
-                    // Folder node — toggle expand
-                    self.tree_state.toggle_selected();
-                }
-                Action::None
-            }
             KeyCode::Char('c') => {
                 if let Some(idx) = self.selected_profile_index() {
                     Action::ConnMgrConnect(idx)

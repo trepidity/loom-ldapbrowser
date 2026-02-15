@@ -96,7 +96,7 @@ impl Default for KeybindingConfig {
             prev_tab: "Ctrl+p".to_string(),
             search: "/".to_string(),
             show_export_dialog: "F4".to_string(),
-            show_bulk_update: "Ctrl+b".to_string(),
+            show_bulk_update: "F8".to_string(),
             show_schema_viewer: "F6".to_string(),
             toggle_log_panel: "F7".to_string(),
             save_connection: "Ctrl+w".to_string(),
