@@ -27,6 +27,7 @@ use crate::components::create_entry_dialog::CreateEntryDialog;
 use crate::components::credential_prompt::CredentialPromptDialog;
 use crate::components::detail_panel::DetailPanel;
 use crate::components::export_dialog::ExportDialog;
+use crate::components::help_popup::HelpPopup;
 use crate::components::layout_bar::LayoutBar;
 use crate::components::log_panel::LogPanel;
 use crate::components::new_connection_dialog::NewConnectionDialog;
@@ -112,6 +113,7 @@ pub struct App {
     bulk_update_dialog: BulkUpdateDialog,
     create_entry_dialog: CreateEntryDialog,
     schema_viewer: SchemaViewer,
+    help_popup: HelpPopup,
     log_panel: LogPanel,
 
     // Ad-hoc connection tracking (for save-to-config)
@@ -172,6 +174,7 @@ impl App {
             bulk_update_dialog: BulkUpdateDialog::new(theme.clone()),
             create_entry_dialog: CreateEntryDialog::new(theme.clone()),
             schema_viewer: SchemaViewer::new(theme.clone()),
+            help_popup: HelpPopup::new(theme.clone()),
             log_panel: LogPanel::new(theme),
             last_adhoc_profile: None,
             tree_area: None,
@@ -885,6 +888,7 @@ impl App {
             || self.bulk_update_dialog.visible
             || self.create_entry_dialog.visible
             || self.schema_viewer.visible
+            || self.help_popup.visible
             || self.log_panel.visible
     }
 
@@ -926,6 +930,8 @@ impl App {
                             self.create_entry_dialog.handle_key_event(key)
                         } else if self.schema_viewer.visible {
                             self.schema_viewer.handle_key_event(key)
+                        } else if self.help_popup.visible {
+                            self.help_popup.handle_key_event(key)
                         } else if self.log_panel.visible {
                             self.log_panel.handle_key_event(key)
                         } else if self.command_panel.input_active
@@ -1713,6 +1719,11 @@ impl App {
                 }
             }
 
+            // Help
+            Action::ShowHelp => {
+                self.help_popup.show(&self.keymap);
+            }
+
             // Log Panel
             Action::ToggleLogPanel => {
                 self.log_panel.toggle();
@@ -1734,6 +1745,7 @@ impl App {
                 self.bulk_update_dialog.hide();
                 self.create_entry_dialog.hide();
                 self.schema_viewer.hide();
+                self.help_popup.hide();
                 self.log_panel.hide();
             }
 
@@ -1985,6 +1997,9 @@ impl App {
         }
         if self.schema_viewer.visible {
             self.schema_viewer.render(frame, full);
+        }
+        if self.help_popup.visible {
+            self.help_popup.render(frame, full);
         }
         if self.log_panel.visible {
             self.log_panel.render(frame, full);

@@ -172,6 +172,12 @@ impl Keymap {
                 Action::ShowSchemaViewer,
             ),
             (
+                "show_help",
+                &config.show_help,
+                &defaults.show_help,
+                Action::ShowHelp,
+            ),
+            (
                 "toggle_log_panel",
                 &config.toggle_log_panel,
                 &defaults.toggle_log_panel,
@@ -220,6 +226,11 @@ impl Keymap {
         // Check configured global bindings
         if let Some(action) = self.global.get(&(key.modifiers, key.code)) {
             return action.clone();
+        }
+
+        // Hardcoded '?' fallback for help (when not already bound)
+        if key.code == KeyCode::Char('?') && key.modifiers == KeyModifiers::NONE {
+            return Action::ShowHelp;
         }
 
         // Context-specific hardcoded bindings (vim nav, panel-internal)
@@ -510,6 +521,7 @@ mod tests {
         let mut config = KeybindingConfig::default();
         config.quit = "Alt+q".to_string();
         config.show_connect_dialog = "F5".to_string();
+        config.show_help = "F3".to_string(); // avoid collision with show_connect_dialog on F5
 
         let km = Keymap::from_config(&config);
 
@@ -587,5 +599,19 @@ mod tests {
     fn test_hint_unknown_action() {
         let km = Keymap::default();
         assert_eq!(km.hint("nonexistent"), "???");
+    }
+
+    #[test]
+    fn test_default_f5_help() {
+        let km = Keymap::default();
+        let action = km.resolve(key(KeyCode::F(5)), FocusTarget::TreePanel);
+        assert!(matches!(action, Action::ShowHelp));
+    }
+
+    #[test]
+    fn test_question_mark_fallback_help() {
+        let km = Keymap::default();
+        let action = km.resolve(key(KeyCode::Char('?')), FocusTarget::TreePanel);
+        assert!(matches!(action, Action::ShowHelp));
     }
 }

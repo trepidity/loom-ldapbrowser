@@ -10,6 +10,7 @@ pub mod create_entry_dialog;
 pub mod credential_prompt;
 pub mod detail_panel;
 pub mod export_dialog;
+pub mod help_popup;
 pub mod layout_bar;
 pub mod log_panel;
 pub mod new_connection_dialog;
