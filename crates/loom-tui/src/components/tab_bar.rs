@@ -71,10 +71,7 @@ impl TabBar {
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         if self.tabs.is_empty() {
-            let line = Line::from(vec![
-                Span::styled("  No connections  ", self.theme.dimmed),
-                Span::styled("[+] New", self.theme.header),
-            ]);
+            let line = Line::from(vec![Span::styled("  No profiles  ", self.theme.dimmed)]);
             let bar = Paragraph::new(line).style(self.theme.status_bar);
             frame.render_widget(bar, area);
             return;
@@ -102,8 +99,6 @@ impl TabBar {
             }
             spans.push(Span::styled(" ", self.theme.status_bar));
         }
-
-        spans.push(Span::styled("[+]", self.theme.header));
 
         // Pad remaining width
         let content_len: usize = spans.iter().map(|s| s.content.len()).sum();

@@ -18,7 +18,7 @@ pub struct StatusBar {
 impl StatusBar {
     pub fn new(theme: Theme, keymap: &Keymap) -> Self {
         let hints = format!(
-            " | {}:quit {}:focus {}:search {}:connect {}:export {}:schema {}:logs {}:conns ",
+            " | {}:quit {}:focus {}:search {}:connect {}:export {}:schema {}:logs {}:browser {}:profiles ",
             keymap.hint("quit"),
             keymap.hint("focus_next"),
             keymap.hint("search"),
@@ -26,7 +26,8 @@ impl StatusBar {
             keymap.hint("show_export_dialog"),
             keymap.hint("show_schema_viewer"),
             keymap.hint("toggle_log_panel"),
-            keymap.hint("toggle_layout"),
+            keymap.hint("switch_to_browser"),
+            keymap.hint("switch_to_profiles"),
         );
         Self {
             connection_info: "Not connected".to_string(),

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tracing::warn;
 
-use crate::action::{Action, FocusTarget};
+use crate::action::{Action, ActiveLayout, FocusTarget};
 use crate::config::KeybindingConfig;
 
 /// Parse a key string like "Alt+t", "Ctrl+Shift+x", "q", "F2", "Tab" into (modifiers, code).
@@ -196,10 +196,16 @@ impl Keymap {
                 Action::SaveCurrentConnection,
             ),
             (
-                "toggle_layout",
-                &config.toggle_layout,
-                &defaults.toggle_layout,
-                Action::ToggleLayout,
+                "switch_to_browser",
+                &config.switch_to_browser,
+                &defaults.switch_to_browser,
+                Action::SwitchLayout(ActiveLayout::Browser),
+            ),
+            (
+                "switch_to_profiles",
+                &config.switch_to_profiles,
+                &defaults.switch_to_profiles,
+                Action::SwitchLayout(ActiveLayout::Profiles),
             ),
         ];
 
@@ -568,8 +574,12 @@ mod tests {
             Action::ToggleLogPanel
         ));
         assert!(matches!(
-            km.resolve(ctrl(KeyCode::Char('g')), FocusTarget::TreePanel),
-            Action::ToggleLayout
+            km.resolve(key(KeyCode::Char('1')), FocusTarget::TreePanel),
+            Action::SwitchLayout(ActiveLayout::Browser)
+        ));
+        assert!(matches!(
+            km.resolve(key(KeyCode::Char('2')), FocusTarget::TreePanel),
+            Action::SwitchLayout(ActiveLayout::Profiles)
         ));
     }
 
@@ -578,7 +588,8 @@ mod tests {
         let km = Keymap::default();
         assert_eq!(km.hint("quit"), "q");
         assert_eq!(km.hint("show_connect_dialog"), "C-t");
-        assert_eq!(km.hint("toggle_layout"), "C-g");
+        assert_eq!(km.hint("switch_to_browser"), "1");
+        assert_eq!(km.hint("switch_to_profiles"), "2");
         assert_eq!(km.hint("search"), "/");
         assert_eq!(km.hint("focus_next"), "Tab");
     }

@@ -13,7 +13,7 @@ pub type ConnectionId = usize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveLayout {
     Browser,
-    Connections,
+    Profiles,
 }
 
 /// All actions that can flow through the application.
@@ -137,10 +137,9 @@ pub enum Action {
     ErrorMessage(String),
 
     // Layout switching
-    ToggleLayout,
     SwitchLayout(ActiveLayout),
 
-    // Connections Manager
+    // Profiles Manager
     ConnMgrSelect(usize),                       // select saved profile by index
     ConnMgrNew,                                 // start creating new profile
     ConnMgrSave(usize, Box<ConnectionProfile>), // save edited profile at index

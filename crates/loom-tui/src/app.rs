@@ -45,12 +45,10 @@ use crate::tui;
 /// Which divider the user is dragging.
 #[derive(Debug, Clone, Copy)]
 enum DragTarget {
-    /// Vertical divider between tree panel and detail/command panels.
+    /// Vertical divider between left and right panels.
     Tree,
-    /// Horizontal divider between detail panel and command panel.
+    /// Horizontal divider between top panels and command panel.
     Detail,
-    /// Vertical divider in connections layout.
-    ConnTree,
 }
 
 /// Backend for a connection tab — either live LDAP or offline/example.
@@ -129,9 +127,8 @@ pub struct App {
     conn_form_area: Option<Rect>,
 
     // Resizable panel splits (percentages, 10..=90)
-    tree_split_pct: u16,      // tree panel width as % of content area
-    detail_split_pct: u16,    // detail panel height as % of right area
-    conn_tree_split_pct: u16, // connections tree width as % of content area
+    tree_split_pct: u16,   // left panel width as % of content area
+    detail_split_pct: u16, // top panels height as % of content area
     drag_target: Option<DragTarget>,
 
     // Async communication
@@ -186,7 +183,6 @@ impl App {
             conn_form_area: None,
             tree_split_pct: 25,
             detail_split_pct: 75,
-            conn_tree_split_pct: 30,
             drag_target: None,
             action_tx,
             action_rx,
@@ -229,7 +225,7 @@ impl App {
             }
         } else {
             self.command_panel.push_message(format!(
-                "No connections configured. Press {} or add profiles to ~/.config/loom/config.toml",
+                "No profiles configured. Press {} or add profiles to ~/.config/loom/config.toml",
                 self.keymap.hint("show_connect_dialog"),
             ));
         }
@@ -937,12 +933,12 @@ impl App {
                         {
                             self.command_panel.handle_input_key(key)
                         } else if self.connection_form.is_editing()
-                            && self.active_layout == ActiveLayout::Connections
+                            && self.active_layout == ActiveLayout::Profiles
                             && self.focus.current() == FocusTarget::ConnectionForm
                         {
                             // Connection form in edit/create mode captures all keys
                             self.connection_form.handle_key_event(key)
-                        } else if self.active_layout == ActiveLayout::Connections {
+                        } else if self.active_layout == ActiveLayout::Profiles {
                             // Connections layout: route to connections panels first
                             let panel_action = match self.focus.current() {
                                 FocusTarget::ConnectionsTree => {
@@ -1029,13 +1025,13 @@ impl App {
                         return if mouse.column < mid {
                             Action::SwitchLayout(ActiveLayout::Browser)
                         } else {
-                            Action::SwitchLayout(ActiveLayout::Connections)
+                            Action::SwitchLayout(ActiveLayout::Profiles)
                         };
                     }
                 }
 
                 // Check connections layout panels
-                if self.active_layout == ActiveLayout::Connections {
+                if self.active_layout == ActiveLayout::Profiles {
                     if let Some(ct) = self.conn_tree_area {
                         if ct.intersects(pos) {
                             return Action::FocusPanel(FocusTarget::ConnectionsTree);
@@ -1093,23 +1089,33 @@ impl App {
                         return Some(DragTarget::Tree);
                     }
                 }
-                // Horizontal divider: bottom edge of detail panel
-                if let Some(detail) = self.detail_area {
+                // Horizontal divider: bottom edge of top panels (tree/detail)
+                if let (Some(tree), Some(detail)) = (self.tree_area, self.detail_area) {
                     let divider_row = detail.y + detail.height;
-                    if row.abs_diff(divider_row) <= 1
-                        && col >= detail.x
-                        && col < detail.x + detail.width
-                    {
+                    let left = tree.x;
+                    let right = detail.x + detail.width;
+                    if row.abs_diff(divider_row) <= 1 && col >= left && col < right {
                         return Some(DragTarget::Detail);
                     }
                 }
             }
-            ActiveLayout::Connections => {
-                // Vertical divider: right edge of connections tree
+            ActiveLayout::Profiles => {
+                // Vertical divider: right edge of profiles tree
                 if let Some(ct) = self.conn_tree_area {
                     let divider_col = ct.x + ct.width;
                     if col.abs_diff(divider_col) <= 1 && row >= ct.y && row < ct.y + ct.height {
-                        return Some(DragTarget::ConnTree);
+                        return Some(DragTarget::Tree);
+                    }
+                }
+                // Horizontal divider: bottom edge of top panels
+                if let (Some(ct), Some(_)) = (self.conn_tree_area, self.command_area) {
+                    let divider_row = ct.y + ct.height;
+                    let cf_right = self
+                        .conn_form_area
+                        .map(|cf| cf.x + cf.width)
+                        .unwrap_or(ct.x + ct.width);
+                    if row.abs_diff(divider_row) <= 1 && col >= ct.x && col < cf_right {
+                        return Some(DragTarget::Detail);
                     }
                 }
             }
@@ -1133,25 +1139,14 @@ impl App {
                 }
             }
             DragTarget::Detail => {
-                if let (Some(detail), Some(cmd)) = (self.detail_area, self.command_area) {
-                    let total_h = (detail.height + cmd.height) as u32;
+                if let (Some(tree), Some(cmd)) = (self.tree_area, self.command_area) {
+                    let total_h = (tree.height + cmd.height) as u32;
                     if total_h == 0 {
                         return;
                     }
-                    let offset = row.saturating_sub(detail.y) as u32;
+                    let offset = row.saturating_sub(tree.y) as u32;
                     let pct = ((offset * 100) / total_h) as u16;
                     self.detail_split_pct = pct.clamp(10, 90);
-                }
-            }
-            DragTarget::ConnTree => {
-                if let (Some(ct), Some(cf)) = (self.conn_tree_area, self.conn_form_area) {
-                    let total_w = (ct.width + cf.width) as u32;
-                    if total_w == 0 {
-                        return;
-                    }
-                    let offset = col.saturating_sub(ct.x) as u32;
-                    let pct = ((offset * 100) / total_w) as u16;
-                    self.conn_tree_split_pct = pct.clamp(10, 90);
                 }
             }
         }
@@ -1188,7 +1183,7 @@ impl App {
             Action::SwitchTab(id) => {
                 self.switch_to_tab(id);
                 // If switching from Connections layout, go to Browser
-                if self.active_layout == ActiveLayout::Connections {
+                if self.active_layout == ActiveLayout::Profiles {
                     self.active_layout = ActiveLayout::Browser;
                     self.layout_bar.active = ActiveLayout::Browser;
                     self.focus.set_layout(ActiveLayout::Browser);
@@ -1290,15 +1285,6 @@ impl App {
                 }
             }
             // Layout switching
-            Action::ToggleLayout => {
-                let new_layout = match self.active_layout {
-                    ActiveLayout::Browser => ActiveLayout::Connections,
-                    ActiveLayout::Connections => ActiveLayout::Browser,
-                };
-                self.active_layout = new_layout;
-                self.layout_bar.active = new_layout;
-                self.focus.set_layout(new_layout);
-            }
             Action::SwitchLayout(layout) => {
                 self.active_layout = layout;
                 self.layout_bar.active = layout;
@@ -1842,27 +1828,27 @@ impl App {
             ActiveLayout::Browser => {
                 self.tab_area = Some(layout_bar_area);
 
-                // Horizontal: tree | right panels (draggable split)
+                // Vertical: top panels | command panel (draggable split)
+                let dp = self.detail_split_pct;
+                let browser_vertical = Layout::vertical([
+                    Constraint::Percentage(dp),
+                    Constraint::Percentage(100 - dp),
+                ])
+                .split(content_area);
+
+                let panels_area = browser_vertical[0];
+                let command_area = browser_vertical[1];
+
+                // Horizontal: tree | detail (draggable split)
                 let tp = self.tree_split_pct;
                 let horizontal = Layout::horizontal([
                     Constraint::Percentage(tp),
                     Constraint::Percentage(100 - tp),
                 ])
-                .split(content_area);
+                .split(panels_area);
 
                 let tree_area = horizontal[0];
-                let right_area = horizontal[1];
-
-                // Right side: detail | command (draggable split)
-                let dp = self.detail_split_pct;
-                let right_vertical = Layout::vertical([
-                    Constraint::Percentage(dp),
-                    Constraint::Percentage(100 - dp),
-                ])
-                .split(right_area);
-
-                let detail_area = right_vertical[0];
-                let command_area = right_vertical[1];
+                let detail_area = horizontal[1];
 
                 // Store areas for mouse hit-testing
                 self.tree_area = Some(tree_area);
@@ -1896,22 +1882,23 @@ impl App {
                     self.focus.is_focused(FocusTarget::CommandPanel),
                 );
             }
-            ActiveLayout::Connections => {
-                // Vertical: panels | status log
-                let conn_vertical = Layout::vertical([
-                    Constraint::Min(3),    // panels
-                    Constraint::Length(6), // status log
+            ActiveLayout::Profiles => {
+                // Vertical: top panels | command panel (draggable split)
+                let dp = self.detail_split_pct;
+                let profiles_vertical = Layout::vertical([
+                    Constraint::Percentage(dp),
+                    Constraint::Percentage(100 - dp),
                 ])
                 .split(content_area);
 
-                let panels_area = conn_vertical[0];
-                let conn_status_area = conn_vertical[1];
+                let panels_area = profiles_vertical[0];
+                let command_area = profiles_vertical[1];
 
-                // Horizontal: connections tree | connection form (draggable split)
-                let cp = self.conn_tree_split_pct;
+                // Horizontal: profiles tree | connection form (draggable split)
+                let tp = self.tree_split_pct;
                 let horizontal = Layout::horizontal([
-                    Constraint::Percentage(cp),
-                    Constraint::Percentage(100 - cp),
+                    Constraint::Percentage(tp),
+                    Constraint::Percentage(100 - tp),
                 ])
                 .split(panels_area);
 
@@ -1920,6 +1907,7 @@ impl App {
 
                 self.conn_tree_area = Some(conn_tree_area);
                 self.conn_form_area = Some(conn_form_area);
+                self.command_area = Some(command_area);
 
                 // Build active connections info
                 let active_conns: Vec<ActiveConnInfo> = self
@@ -1931,7 +1919,7 @@ impl App {
                     })
                     .collect();
 
-                // Build and render connections tree (append example profile)
+                // Build and render profiles tree (append example profile)
                 let tree_focused = self.focus.is_focused(FocusTarget::ConnectionsTree);
                 let mut conn_profiles = self.config.connections.clone();
                 conn_profiles.push(example_profile());
@@ -1952,9 +1940,12 @@ impl App {
                     self.focus.is_focused(FocusTarget::ConnectionForm),
                 );
 
-                // Render status log
-                self.command_panel
-                    .render_status(frame, conn_status_area, "Status");
+                // Render command panel
+                self.command_panel.render(
+                    frame,
+                    command_area,
+                    self.focus.is_focused(FocusTarget::CommandPanel),
+                );
             }
         }
 

@@ -49,7 +49,7 @@ impl FocusManager {
                 FocusTarget::DetailPanel,
                 FocusTarget::CommandPanel,
             ],
-            ActiveLayout::Connections => {
+            ActiveLayout::Profiles => {
                 vec![FocusTarget::ConnectionsTree, FocusTarget::ConnectionForm]
             }
         };
