@@ -91,14 +91,14 @@ impl Default for KeybindingConfig {
             force_quit: "Ctrl+c".to_string(),
             focus_next: "Tab".to_string(),
             focus_prev: "Shift+Tab".to_string(),
-            show_connect_dialog: "Ctrl+t".to_string(),
+            show_connect_dialog: "F3".to_string(),
             next_tab: "Ctrl+n".to_string(),
             prev_tab: "Ctrl+p".to_string(),
             search: "/".to_string(),
-            show_export_dialog: "Ctrl+e".to_string(),
+            show_export_dialog: "F4".to_string(),
             show_bulk_update: "Ctrl+b".to_string(),
-            show_schema_viewer: "Ctrl+s".to_string(),
-            toggle_log_panel: "Ctrl+l".to_string(),
+            show_schema_viewer: "F6".to_string(),
+            toggle_log_panel: "F7".to_string(),
             save_connection: "Ctrl+w".to_string(),
             switch_to_browser: "1".to_string(),
             switch_to_profiles: "2".to_string(),
@@ -325,7 +325,7 @@ timeout_secs = 60
         let config = AppConfig::default();
         assert_eq!(config.keybindings.quit, "q");
         assert_eq!(config.keybindings.force_quit, "Ctrl+c");
-        assert_eq!(config.keybindings.show_connect_dialog, "Ctrl+t");
+        assert_eq!(config.keybindings.show_connect_dialog, "F3");
         assert_eq!(config.keybindings.switch_to_browser, "1");
         assert_eq!(config.keybindings.switch_to_profiles, "2");
     }

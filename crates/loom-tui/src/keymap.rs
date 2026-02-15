@@ -459,23 +459,23 @@ mod tests {
     }
 
     #[test]
-    fn test_default_ctrl_t_connect() {
+    fn test_default_f3_connect() {
         let km = Keymap::default();
-        let action = km.resolve(ctrl(KeyCode::Char('t')), FocusTarget::TreePanel);
+        let action = km.resolve(key(KeyCode::F(3)), FocusTarget::TreePanel);
         assert!(matches!(action, Action::ShowConnectDialog));
     }
 
     #[test]
-    fn test_default_ctrl_e_export() {
+    fn test_default_f4_export() {
         let km = Keymap::default();
-        let action = km.resolve(ctrl(KeyCode::Char('e')), FocusTarget::TreePanel);
+        let action = km.resolve(key(KeyCode::F(4)), FocusTarget::TreePanel);
         assert!(matches!(action, Action::ShowExportDialog));
     }
 
     #[test]
-    fn test_default_ctrl_s_schema() {
+    fn test_default_f6_schema() {
         let km = Keymap::default();
-        let action = km.resolve(ctrl(KeyCode::Char('s')), FocusTarget::TreePanel);
+        let action = km.resolve(key(KeyCode::F(6)), FocusTarget::TreePanel);
         assert!(matches!(action, Action::ShowSchemaViewer));
     }
 
@@ -570,7 +570,7 @@ mod tests {
             Action::ShowBulkUpdateDialog
         ));
         assert!(matches!(
-            km.resolve(ctrl(KeyCode::Char('l')), FocusTarget::TreePanel),
+            km.resolve(key(KeyCode::F(7)), FocusTarget::TreePanel),
             Action::ToggleLogPanel
         ));
         assert!(matches!(
@@ -587,7 +587,7 @@ mod tests {
     fn test_hint_returns_display_string() {
         let km = Keymap::default();
         assert_eq!(km.hint("quit"), "q");
-        assert_eq!(km.hint("show_connect_dialog"), "C-t");
+        assert_eq!(km.hint("show_connect_dialog"), "F3");
         assert_eq!(km.hint("switch_to_browser"), "1");
         assert_eq!(km.hint("switch_to_profiles"), "2");
         assert_eq!(km.hint("search"), "/");
