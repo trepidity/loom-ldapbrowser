@@ -83,7 +83,7 @@ impl DetailPanel {
                 }
                 Action::None
             }
-            KeyCode::Char('e') | KeyCode::Enter => {
+            KeyCode::Char('e') => {
                 // Edit the selected attribute value
                 if let (Some(entry), Some((attr, val))) = (&self.entry, self.selected_attr_value())
                 {
@@ -92,6 +92,13 @@ impl DetailPanel {
                         attr.to_string(),
                         val.to_string(),
                     );
+                }
+                Action::None
+            }
+            KeyCode::Enter => {
+                // Jump to the selected value as a DN
+                if let Some((_attr, val)) = self.selected_attr_value() {
+                    return Action::TreeSelect(val.to_string());
                 }
                 Action::None
             }
