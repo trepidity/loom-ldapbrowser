@@ -921,7 +921,11 @@ impl App {
                         } else if self.credential_prompt.visible {
                             self.credential_prompt.handle_key_event(key)
                         } else if self.search_dialog.visible {
-                            self.search_dialog.handle_key_event(key)
+                            let a = self.search_dialog.handle_key_event(key);
+                            if matches!(&a, Action::TreeSelect(_)) {
+                                let _ = self.action_tx.send(Action::FocusPanel(FocusTarget::DetailPanel));
+                            }
+                            a
                         } else if self.export_dialog.visible {
                             self.export_dialog.handle_key_event(key)
                         } else if self.bulk_update_dialog.visible {
