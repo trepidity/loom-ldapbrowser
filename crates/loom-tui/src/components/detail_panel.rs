@@ -232,7 +232,6 @@ impl Component for DetailPanel {
                     },
                 );
             }
-
         } else {
             let empty = ratatui::widgets::Paragraph::new("Select an entry from the tree")
                 .style(self.theme.dimmed)

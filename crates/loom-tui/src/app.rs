@@ -21,9 +21,9 @@ use crate::components::bulk_update_dialog::BulkUpdateDialog;
 use crate::components::command_panel::CommandPanel;
 use crate::components::confirm_dialog::ConfirmDialog;
 use crate::components::connect_dialog::ConnectDialog;
-use crate::components::context_menu::ContextMenu;
 use crate::components::connection_form::ConnectionForm;
 use crate::components::connections_tree::{ActiveConnInfo, ConnectionsTree};
+use crate::components::context_menu::ContextMenu;
 use crate::components::create_entry_dialog::CreateEntryDialog;
 use crate::components::credential_prompt::CredentialPromptDialog;
 use crate::components::detail_panel::DetailPanel;
@@ -929,7 +929,9 @@ impl App {
                         } else if self.search_dialog.visible {
                             let a = self.search_dialog.handle_key_event(key);
                             if matches!(&a, Action::TreeSelect(_)) {
-                                let _ = self.action_tx.send(Action::FocusPanel(FocusTarget::DetailPanel));
+                                let _ = self
+                                    .action_tx
+                                    .send(Action::FocusPanel(FocusTarget::DetailPanel));
                             }
                             a
                         } else if self.export_dialog.visible {
@@ -1867,9 +1869,10 @@ impl App {
                     }
                 },
                 Err(e) => {
-                    let _ = self
-                        .action_tx
-                        .send(Action::ErrorMessage(format!("Clipboard unavailable: {}", e)));
+                    let _ = self.action_tx.send(Action::ErrorMessage(format!(
+                        "Clipboard unavailable: {}",
+                        e
+                    )));
                 }
             },
 

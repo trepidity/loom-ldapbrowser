@@ -179,10 +179,7 @@ impl ContextMenu {
             KeyCode::Char(c) => {
                 let upper = c.to_ascii_uppercase();
                 if let Some(idx) = self.items.iter().position(|item| {
-                    item.label
-                        .chars()
-                        .next()
-                        .map(|ch| ch.to_ascii_uppercase()) == Some(upper)
+                    item.label.chars().next().map(|ch| ch.to_ascii_uppercase()) == Some(upper)
                 }) {
                     self.selected = idx;
                 }

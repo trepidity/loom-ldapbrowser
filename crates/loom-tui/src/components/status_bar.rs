@@ -18,17 +18,10 @@ pub struct StatusBar {
 impl StatusBar {
     pub fn new(theme: Theme, keymap: &Keymap) -> Self {
         let hints = format!(
-            "{}:browser {}:profiles {}:connect {}:export {}:help {}:schema {}:logs {}:bulk {}:search {}:save {}:quit",
+            "{}:browser {}:profiles {}:help {}:quit",
             keymap.hint("switch_to_browser"),
             keymap.hint("switch_to_profiles"),
-            keymap.hint("show_connect_dialog"),
-            keymap.hint("show_export_dialog"),
             keymap.hint("show_help"),
-            keymap.hint("show_schema_viewer"),
-            keymap.hint("toggle_log_panel"),
-            keymap.hint("show_bulk_update"),
-            keymap.hint("search"),
-            keymap.hint("save_connection"),
             keymap.hint("quit"),
         );
         Self {

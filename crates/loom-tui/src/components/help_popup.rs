@@ -252,7 +252,10 @@ fn build_sections(keymap: &Keymap) -> Vec<HelpSection> {
         HelpSection {
             title: "CONTEXT MENU".to_string(),
             entries: vec![
-                ("Space/Right-click".to_string(), "Open context menu".to_string()),
+                (
+                    "Space/Right-click".to_string(),
+                    "Open context menu".to_string(),
+                ),
                 (
                     "j/k \u{2191}/\u{2193}".to_string(),
                     "Navigate items".to_string(),
