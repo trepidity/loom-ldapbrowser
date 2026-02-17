@@ -282,11 +282,9 @@ impl ConnectionForm {
     }
 
     fn handle_view_key(&mut self, key: KeyEvent) -> Action {
-        if self.profile_index.is_none() {
-            return Action::None;
-        }
         match key.code {
-            KeyCode::Char('e') => {
+            KeyCode::Char('n') => Action::ConnMgrNew,
+            KeyCode::Char('e') if self.profile_index.is_some() => {
                 self.edit_profile();
                 Action::None
             }
