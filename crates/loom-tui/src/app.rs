@@ -896,6 +896,24 @@ impl App {
             || self.log_panel.visible
     }
 
+    /// Dismiss every open popup/dialog.
+    fn dismiss_all_popups(&mut self) {
+        self.context_menu.hide();
+        self.confirm_dialog.hide();
+        self.connect_dialog.hide();
+        self.new_connection_dialog.hide();
+        self.credential_prompt.hide();
+        self.search_dialog.hide();
+        self.attribute_editor.hide();
+        self.attribute_picker.hide();
+        self.export_dialog.hide();
+        self.bulk_update_dialog.hide();
+        self.create_entry_dialog.hide();
+        self.schema_viewer.hide();
+        self.help_popup.hide();
+        self.log_panel.hide();
+    }
+
     /// Main event loop.
     pub async fn run(&mut self) -> anyhow::Result<()> {
         tui::install_panic_hook();
@@ -911,8 +929,22 @@ impl App {
             if let Some(app_event) = event::poll_event(tick_rate) {
                 match app_event {
                     AppEvent::Key(key) => {
+                        // Search binding is truly global — it works from any context,
+                        // dismissing any open popups/dialogs first.
+                        let action = if matches!(
+                            self.keymap.resolve_global_only(&key),
+                            Action::SearchFocusInput
+                        ) {
+                            self.dismiss_all_popups();
+                            self.command_panel.deactivate_input();
+                            if self.active_layout != ActiveLayout::Browser {
+                                let _ = self
+                                    .action_tx
+                                    .send(Action::SwitchLayout(ActiveLayout::Browser));
+                            }
+                            Action::SearchFocusInput
                         // Popups intercept keys first
-                        let action = if self.context_menu.visible {
+                        } else if self.context_menu.visible {
                             self.context_menu.handle_key_event(key)
                         } else if self.attribute_editor.visible {
                             self.attribute_editor.handle_key_event(key)
