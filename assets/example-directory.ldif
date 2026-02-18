@@ -19,6 +19,7 @@ cn: Administrator
 sn: Administrator
 displayName: Directory Administrator
 description: Built-in administrator account
+info:: VGhpcyBpcyBhIG11bHRpLWxpbmUgbm90ZS4KU2Vjb25kIGxpbmUgb2YgdGhlIGluZm8gZmllbGQuClRoaXJkIGxpbmUgd2l0aCBhZGRpdGlvbmFsIGRldGFpbHMuCgpBZnRlciBhIGJsYW5rIGxpbmUsIHRoaXMgY29udGludWVzLg==
 
 # ============================================================
 # Domain Controllers

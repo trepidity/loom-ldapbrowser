@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Modifier;
-use ratatui::text::{Line, Span};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Row, Table, TableState};
 use ratatui::Frame;
 
@@ -21,7 +21,10 @@ enum AttrKind {
 /// Flattened attribute row for table display.
 struct AttrRow {
     attr_name: String,
-    value: String,
+    /// Original value (for editing, copying, deleting).
+    raw_value: String,
+    /// Sanitized value for display (control chars replaced).
+    display_value: String,
     /// True for first value of an attribute (displays the attribute name).
     is_first: bool,
     kind: AttrKind,
@@ -60,11 +63,11 @@ impl DetailPanel {
         self.table_state.select(None);
     }
 
-    /// Get the attribute name and value at the currently selected row.
+    /// Get the attribute name and raw value at the currently selected row.
     pub fn selected_attr_value(&self) -> Option<(&str, &str)> {
         let idx = self.table_state.selected()?;
         let row = self.rows.get(idx)?;
-        Some((&row.attr_name, &row.value))
+        Some((&row.attr_name, &row.raw_value))
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Action {
@@ -126,7 +129,7 @@ impl DetailPanel {
                 {
                     let row = self.rows.get(self.table_state.selected().unwrap_or(0));
                     if row.map(|r| r.kind) != Some(AttrKind::Operational) {
-                        let msg = format!("Delete value '{}' from '{}'?", val, attr);
+                        let msg = format!("Delete value '{}' from '{}'?", flatten_for_message(val), attr);
                         return Action::ShowConfirm(
                             msg,
                             Box::new(Action::DeleteAttributeValue(
@@ -194,10 +197,19 @@ impl Component for DetailPanel {
                         AttrKind::Normal => self.theme.normal,
                     };
                     let attr_display = if r.is_first { r.attr_name.as_str() } else { "" };
+
+                    let value_lines: Vec<Line> = r
+                        .display_value
+                        .split('\n')
+                        .map(|line| Line::from(Span::styled(line.to_string(), value_style)))
+                        .collect();
+                    let height = value_lines.len() as u16;
+
                     Row::new(vec![
                         Cell::from(Span::styled(attr_display, attr_style)),
-                        Cell::from(Span::styled(&r.value, value_style)),
+                        Cell::from(Text::from(value_lines)),
                     ])
+                    .height(height)
                 })
                 .collect();
 
@@ -245,6 +257,36 @@ impl Component for DetailPanel {
     }
 }
 
+/// Sanitize a value for multi-line display: normalize line endings and
+/// replace non-printable control characters, but preserve newlines.
+fn sanitize_for_display(value: &str) -> String {
+    let normalized = value.replace("\r\n", "\n").replace('\r', "\n");
+    let mut out = String::with_capacity(normalized.len());
+    for ch in normalized.chars() {
+        match ch {
+            '\n' => out.push('\n'),
+            '\t' => out.push_str("    "),
+            c if c.is_control() => out.push('\u{FFFD}'),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Flatten a value into a single line for use in confirmation dialogs etc.
+fn flatten_for_message(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\n' | '\r' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 fn build_rows(entry: &LdapEntry, schema: Option<&SchemaCache>) -> Vec<AttrRow> {
     let mut rows = Vec::new();
     for (name, values) in &entry.attributes {
@@ -261,7 +303,8 @@ fn build_rows(entry: &LdapEntry, schema: Option<&SchemaCache>) -> Vec<AttrRow> {
         for (i, val) in values.iter().enumerate() {
             rows.push(AttrRow {
                 attr_name: name.clone(),
-                value: val.clone(),
+                raw_value: val.clone(),
+                display_value: sanitize_for_display(val),
                 is_first: i == 0,
                 kind,
             });

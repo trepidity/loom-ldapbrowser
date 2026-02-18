@@ -243,6 +243,13 @@ fn build_example_schema() -> SchemaCache {
             false,
             false,
         ),
+        (
+            "2.5.4.15.1",
+            "info",
+            AttributeSyntax::DirectoryString,
+            false,
+            false,
+        ),
         ("2.5.4.31", "member", AttributeSyntax::Dn, false, false),
         ("2.5.4.34", "seeAlso", AttributeSyntax::Dn, false, false),
         (

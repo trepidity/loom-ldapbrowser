@@ -20,7 +20,8 @@
       "cn": ["Alice Smith"],
       "sn": ["Smith"],
       "givenName": ["Alice"],
-      "mail": ["alice@example.com"]
+      "mail": ["alice@example.com"],
+      "info": ["First line of info.\nSecond line.\nThird line.\n\nAfter blank line."]
     }
   },
   {
