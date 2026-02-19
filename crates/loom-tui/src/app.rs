@@ -1478,7 +1478,12 @@ impl App {
 
             // Search
             Action::SearchExecute(filter) => {
-                if let Some(id) = self.active_tab_id {
+                if let Err(e) = loom_core::filter::validate_filter(&filter) {
+                    self.command_panel
+                        .push_error(format!("Invalid filter: {}", e));
+                    self.command_panel.activate_input();
+                    self.command_panel.input_buffer = filter;
+                } else if let Some(id) = self.active_tab_id {
                     self.command_panel
                         .push_message(format!("Searching: {}...", filter));
                     self.spawn_search(id, filter);
@@ -1759,6 +1764,11 @@ impl App {
                         self.schema_viewer.show(&schema);
                     }
                 }
+                // Update command panel autocomplete if this is the active tab
+                if self.active_tab_id == Some(conn_id) {
+                    let names = schema.all_attribute_names();
+                    self.command_panel.set_attribute_names(names);
+                }
             }
 
             // Help
@@ -1889,6 +1899,12 @@ impl App {
 
         if let Some(tab) = self.tabs.iter().find(|t| t.id == id) {
             self.status_bar.set_connected(&tab.host, &tab.server_type);
+            if let Some(schema) = &tab.schema {
+                self.command_panel
+                    .set_attribute_names(schema.all_attribute_names());
+            } else {
+                self.command_panel.set_attribute_names(vec![]);
+            }
         }
     }
 

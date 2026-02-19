@@ -122,6 +122,23 @@ impl SchemaCache {
         }
     }
 
+    /// Return all attribute names in the schema, including aliases and
+    /// read-only attributes. Useful for search filter autocomplete where
+    /// any attribute can appear in a filter expression.
+    pub fn all_attribute_names(&self) -> Vec<String> {
+        let mut seen_oids = BTreeSet::new();
+        let mut result = Vec::new();
+        for at in self.attribute_types.values() {
+            if seen_oids.insert(at.oid.clone()) {
+                for name in &at.names {
+                    result.push(name.clone());
+                }
+            }
+        }
+        result.sort();
+        result
+    }
+
     /// Return all user-modifiable attribute names in the schema.
     /// Deduplicates by using the first (canonical) name from each attribute type.
     pub fn all_user_attributes(&self) -> Vec<String> {
