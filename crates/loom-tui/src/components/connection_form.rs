@@ -32,6 +32,7 @@ enum Field {
     PageSize,
     Timeout,
     RelaxRules,
+    ReadOnly,
 }
 
 impl Field {
@@ -48,13 +49,14 @@ impl Field {
             Field::PasswordCommand => Field::PageSize,
             Field::PageSize => Field::Timeout,
             Field::Timeout => Field::RelaxRules,
-            Field::RelaxRules => Field::Name,
+            Field::RelaxRules => Field::ReadOnly,
+            Field::ReadOnly => Field::Name,
         }
     }
 
     fn prev(self) -> Self {
         match self {
-            Field::Name => Field::RelaxRules,
+            Field::Name => Field::ReadOnly,
             Field::Host => Field::Name,
             Field::Port => Field::Host,
             Field::BindDn => Field::Port,
@@ -65,6 +67,7 @@ impl Field {
             Field::PasswordCommand => Field::CredentialMethod,
             Field::PageSize => Field::PasswordCommand,
             Field::Timeout => Field::PageSize,
+            Field::ReadOnly => Field::RelaxRules,
             Field::RelaxRules => Field::Timeout,
         }
     }
@@ -91,6 +94,7 @@ pub struct ConnectionForm {
     page_size: String,
     timeout: String,
     relax_rules: bool,
+    read_only: bool,
 }
 
 impl ConnectionForm {
@@ -112,6 +116,7 @@ impl ConnectionForm {
             page_size: "500".to_string(),
             timeout: "30".to_string(),
             relax_rules: false,
+            read_only: false,
         }
     }
 
@@ -147,6 +152,7 @@ impl ConnectionForm {
         self.page_size = "500".to_string();
         self.timeout = "30".to_string();
         self.relax_rules = false;
+        self.read_only = false;
     }
 
     /// Clear the form (no profile selected).
@@ -163,6 +169,7 @@ impl ConnectionForm {
         self.page_size.clear();
         self.timeout.clear();
         self.relax_rules = false;
+        self.read_only = false;
     }
 
     fn load_from_profile(&mut self, profile: &ConnectionProfile) {
@@ -178,6 +185,7 @@ impl ConnectionForm {
         self.page_size = profile.page_size.to_string();
         self.timeout = profile.timeout_secs.to_string();
         self.relax_rules = profile.relax_rules;
+        self.read_only = profile.read_only;
     }
 
     fn to_profile(&self) -> Result<ConnectionProfile, String> {
@@ -232,6 +240,7 @@ impl ConnectionForm {
             page_size,
             timeout_secs: timeout,
             relax_rules: self.relax_rules,
+            read_only: self.read_only,
             offline: false,
         })
     }
@@ -265,7 +274,7 @@ impl ConnectionForm {
             Field::PageSize => Some(&mut self.page_size),
             Field::Timeout => Some(&mut self.timeout),
             // These are cycled with special keys, not typed
-            Field::TlsMode | Field::CredentialMethod | Field::RelaxRules => None,
+            Field::TlsMode | Field::CredentialMethod | Field::RelaxRules | Field::ReadOnly => None,
         }
     }
 
@@ -366,6 +375,10 @@ impl ConnectionForm {
                         self.relax_rules = !self.relax_rules;
                         Action::None
                     }
+                    Field::ReadOnly => {
+                        self.read_only = !self.read_only;
+                        Action::None
+                    }
                     _ => self.submit(),
                 }
             }
@@ -387,6 +400,10 @@ impl ConnectionForm {
                 // Toggle fields: space toggles
                 if self.active_field == Field::RelaxRules {
                     self.relax_rules = !self.relax_rules;
+                    return Action::None;
+                }
+                if self.active_field == Field::ReadOnly {
+                    self.read_only = !self.read_only;
                     return Action::None;
                 }
                 if let Some(buf) = self.active_buffer_mut() {
@@ -431,7 +448,7 @@ impl ConnectionForm {
 
         let editable = self.mode != FormMode::View;
 
-        // Layout: 12 fields at 2 lines each + hints
+        // Layout: 13 fields at 2 lines each + hints
         let layout = Layout::vertical([
             Constraint::Length(2), // Name
             Constraint::Length(2), // Host
@@ -445,6 +462,7 @@ impl ConnectionForm {
             Constraint::Length(2), // Page Size
             Constraint::Length(2), // Timeout
             Constraint::Length(2), // Relax Rules
+            Constraint::Length(2), // Read Only
             Constraint::Min(1),    // Hints
         ])
         .split(inner);
@@ -538,6 +556,17 @@ impl ConnectionForm {
             editable,
         );
 
+        // Read Only (boolean toggle)
+        let read_only_str = if self.read_only { "Yes" } else { "No" };
+        self.render_field(
+            frame,
+            layout[12],
+            "Read Only",
+            read_only_str,
+            Field::ReadOnly,
+            editable,
+        );
+
         // Hints
         let hints_text = match self.mode {
             FormMode::View => "e:Edit  c:Connect  d:Delete",
@@ -547,7 +576,7 @@ impl ConnectionForm {
             }
         };
         let hints = Paragraph::new(Line::from(Span::styled(hints_text, self.theme.dimmed)));
-        frame.render_widget(hints, layout[12]);
+        frame.render_widget(hints, layout[13]);
     }
 
     fn render_field(

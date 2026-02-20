@@ -174,6 +174,7 @@ impl NewConnectionDialog {
             timeout_secs: 30,
             relax_rules: false,
             folder: None,
+            read_only: false,
             offline: false,
         };
 

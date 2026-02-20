@@ -29,6 +29,8 @@ pub struct ConnectionProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
+    pub read_only: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
     pub offline: bool,
 }
 
@@ -308,6 +310,7 @@ timeout_secs = 60
             timeout_secs: 30,
             relax_rules: false,
             folder: None,
+            read_only: false,
             offline: false,
         };
 

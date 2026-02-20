@@ -66,6 +66,7 @@ struct ConnectionTab {
     host: String,
     server_type: String,
     subschema_dn: Option<String>,
+    read_only: bool,
     backend: TabBackend,
     directory_tree: DirectoryTree,
     schema: Option<SchemaCache>,
@@ -270,6 +271,7 @@ impl App {
             host: "contoso.example".to_string(),
             server_type: "Active Directory (Example)".to_string(),
             subschema_dn: None,
+            read_only: true,
             backend: TabBackend::Offline(offline),
             directory_tree: DirectoryTree::new(base_dn.clone()),
             schema: Some(schema),
@@ -323,8 +325,10 @@ impl App {
         let label = profile.name.clone();
         let host = profile.host.clone();
 
+        let read_only = profile.read_only;
+        let ro_suffix = if read_only { " (read-only)" } else { "" };
         self.command_panel
-            .push_message(format!("Connected to {} (base: {})", host, base_dn));
+            .push_message(format!("Connected to {} (base: {}){}", host, base_dn, ro_suffix));
         self.status_bar.set_connected(&host, &server_type_str);
 
         let connection = Arc::new(Mutex::new(conn));
@@ -336,6 +340,7 @@ impl App {
             host,
             server_type: server_type_str,
             subschema_dn,
+            read_only,
             backend: TabBackend::Live(connection),
             directory_tree,
             schema: None,
@@ -503,6 +508,12 @@ impl App {
     fn spawn_save_attribute(&self, conn_id: ConnectionId, result: EditResult) {
         let tab = self.tabs.iter().find(|t| t.id == conn_id);
         if let Some(tab) = tab {
+            if tab.read_only {
+                let _ = self
+                    .action_tx
+                    .send(Action::ErrorMessage("Connection is read-only".to_string()));
+                return;
+            }
             let tx = self.action_tx.clone();
 
             match &tab.backend {
@@ -657,6 +668,12 @@ impl App {
     ) {
         let tab = self.tabs.iter().find(|t| t.id == conn_id);
         if let Some(tab) = tab {
+            if tab.read_only {
+                let _ = self
+                    .action_tx
+                    .send(Action::ErrorMessage("Connection is read-only".to_string()));
+                return;
+            }
             let tx = self.action_tx.clone();
 
             match &tab.backend {
@@ -698,6 +715,12 @@ impl App {
     ) {
         let tab = self.tabs.iter().find(|t| t.id == conn_id);
         if let Some(tab) = tab {
+            if tab.read_only {
+                let _ = self
+                    .action_tx
+                    .send(Action::ErrorMessage("Connection is read-only".to_string()));
+                return;
+            }
             let tx = self.action_tx.clone();
 
             match &tab.backend {
@@ -736,6 +759,12 @@ impl App {
     fn spawn_delete_entry(&self, conn_id: ConnectionId, dn: String) {
         let tab = self.tabs.iter().find(|t| t.id == conn_id);
         if let Some(tab) = tab {
+            if tab.read_only {
+                let _ = self
+                    .action_tx
+                    .send(Action::ErrorMessage("Connection is read-only".to_string()));
+                return;
+            }
             let tx = self.action_tx.clone();
 
             match &tab.backend {
@@ -836,6 +865,12 @@ impl App {
     ) {
         let tab = self.tabs.iter().find(|t| t.id == conn_id);
         if let Some(tab) = tab {
+            if tab.read_only {
+                let _ = self
+                    .action_tx
+                    .send(Action::ErrorMessage("Connection is read-only".to_string()));
+                return;
+            }
             let tx = self.action_tx.clone();
 
             match &tab.backend {
@@ -2147,6 +2182,7 @@ fn example_profile() -> ConnectionProfile {
         timeout_secs: 30,
         relax_rules: false,
         folder: None,
+        read_only: false,
         offline: true,
     }
 }
