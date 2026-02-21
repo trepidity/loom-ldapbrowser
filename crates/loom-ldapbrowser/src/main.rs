@@ -7,7 +7,11 @@ use loom_tui::app::App;
 use loom_tui::config::AppConfig;
 
 #[derive(Parser, Debug)]
-#[command(name = "loom-ldapbrowser", version, about = "A terminal-based LDAP browser")]
+#[command(
+    name = "loom-ldapbrowser",
+    version,
+    about = "A terminal-based LDAP browser"
+)]
 struct Cli {
     /// Path to config file (default: ~/.config/loom-ldapbrowser/config.toml)
     #[arg(short, long)]
@@ -40,7 +44,9 @@ async fn main() -> Result<()> {
     let log_file = std::fs::File::create(log_dir.join("loom-ldapbrowser.log"))?;
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("loom_ldapbrowser=debug".parse()?))
+        .with_env_filter(
+            EnvFilter::from_default_env().add_directive("loom_ldapbrowser=debug".parse()?),
+        )
         .with_writer(log_file)
         .with_ansi(false)
         .init();
