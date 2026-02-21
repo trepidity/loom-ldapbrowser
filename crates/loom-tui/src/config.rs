@@ -88,7 +88,7 @@ pub struct KeybindingConfig {
 impl Default for KeybindingConfig {
     fn default() -> Self {
         Self {
-            quit: "Esc".to_string(),
+            quit: "Ctrl+q".to_string(),
             force_quit: "Ctrl+c".to_string(),
             focus_next: "Tab".to_string(),
             focus_prev: "Shift+Tab".to_string(),
@@ -324,7 +324,7 @@ timeout_secs = 60
     #[test]
     fn test_keybindings_config_defaults() {
         let config = AppConfig::default();
-        assert_eq!(config.keybindings.quit, "Esc");
+        assert_eq!(config.keybindings.quit, "Ctrl+q");
         assert_eq!(config.keybindings.force_quit, "Ctrl+c");
         assert_eq!(config.keybindings.show_connect_dialog, "Ctrl+t");
         assert_eq!(config.keybindings.search, "F9");

@@ -221,6 +221,14 @@ impl Keymap {
         Self { global, hints }
     }
 
+    /// Check only the configured global bindings, ignoring context-specific fallbacks.
+    pub fn resolve_global_only(&self, key: &KeyEvent) -> Action {
+        self.global
+            .get(&(key.modifiers, key.code))
+            .cloned()
+            .unwrap_or(Action::None)
+    }
+
     /// Resolve a key event to an action based on global bindings and context.
     pub fn resolve(&self, key: KeyEvent, focus: FocusTarget) -> Action {
         // Check configured global bindings
@@ -439,7 +447,7 @@ mod tests {
     #[test]
     fn test_default_quit() {
         let km = Keymap::default();
-        let action = km.resolve(key(KeyCode::Esc), FocusTarget::TreePanel);
+        let action = km.resolve(ctrl(KeyCode::Char('q')), FocusTarget::TreePanel);
         assert!(matches!(action, Action::Quit));
     }
 
@@ -536,8 +544,8 @@ mod tests {
         let action = km.resolve(key(KeyCode::F(5)), FocusTarget::TreePanel);
         assert!(matches!(action, Action::ShowConnectDialog));
 
-        // Old Esc no longer quits (overridden)
-        let action = km.resolve(key(KeyCode::Esc), FocusTarget::TreePanel);
+        // Old Ctrl+q no longer quits (overridden)
+        let action = km.resolve(ctrl(KeyCode::Char('q')), FocusTarget::TreePanel);
         assert!(matches!(action, Action::None));
     }
 
@@ -548,8 +556,8 @@ mod tests {
 
         let km = Keymap::from_config(&config);
 
-        // Should fall back to default "Esc"
-        let action = km.resolve(key(KeyCode::Esc), FocusTarget::TreePanel);
+        // Should fall back to default "Ctrl+q"
+        let action = km.resolve(ctrl(KeyCode::Char('q')), FocusTarget::TreePanel);
         assert!(matches!(action, Action::Quit));
     }
 
@@ -586,7 +594,7 @@ mod tests {
     #[test]
     fn test_hint_returns_display_string() {
         let km = Keymap::default();
-        assert_eq!(km.hint("quit"), "Esc");
+        assert_eq!(km.hint("quit"), "C-q");
         assert_eq!(km.hint("show_connect_dialog"), "C-t");
         assert_eq!(km.hint("switch_to_browser"), "F1");
         assert_eq!(km.hint("switch_to_profiles"), "F2");
