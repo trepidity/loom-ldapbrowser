@@ -184,6 +184,7 @@ fn build_sections(keymap: &Keymap) -> Vec<HelpSection> {
                     keymap.hint("show_schema_viewer").to_string(),
                     "Schema viewer".to_string(),
                 ),
+                ("F3".to_string(), "About".to_string()),
                 (
                     keymap.hint("toggle_log_panel").to_string(),
                     "Log panel".to_string(),

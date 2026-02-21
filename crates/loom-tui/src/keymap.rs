@@ -234,6 +234,11 @@ impl Keymap {
             return action.clone();
         }
 
+        // Hardcoded F3 for About dialog
+        if key.code == KeyCode::F(3) && key.modifiers == KeyModifiers::NONE {
+            return Action::ShowAbout;
+        }
+
         // Hardcoded '?' fallback for help (when not already bound)
         if key.code == KeyCode::Char('?') && key.modifiers == KeyModifiers::NONE {
             return Action::ShowHelp;

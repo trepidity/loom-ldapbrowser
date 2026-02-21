@@ -1,3 +1,4 @@
+pub mod about_popup;
 pub mod attribute_editor;
 pub mod attribute_picker;
 pub mod bulk_update_dialog;

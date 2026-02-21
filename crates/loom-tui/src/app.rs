@@ -29,6 +29,7 @@ use crate::components::create_entry_dialog::CreateEntryDialog;
 use crate::components::credential_prompt::CredentialPromptDialog;
 use crate::components::detail_panel::DetailPanel;
 use crate::components::export_dialog::ExportDialog;
+use crate::components::about_popup::AboutPopup;
 use crate::components::help_popup::HelpPopup;
 use crate::components::profile_export_dialog::ProfileExportDialog;
 use crate::components::profile_import_dialog::ProfileImportDialog;
@@ -118,6 +119,7 @@ pub struct App {
     create_entry_dialog: CreateEntryDialog,
     schema_viewer: SchemaViewer,
     help_popup: HelpPopup,
+    about_popup: AboutPopup,
     log_panel: LogPanel,
     profile_export_dialog: ProfileExportDialog,
     profile_import_dialog: ProfileImportDialog,
@@ -181,6 +183,7 @@ impl App {
             create_entry_dialog: CreateEntryDialog::new(theme.clone()),
             schema_viewer: SchemaViewer::new(theme.clone()),
             help_popup: HelpPopup::new(theme.clone()),
+            about_popup: AboutPopup::new(theme.clone()),
             log_panel: LogPanel::new(theme.clone()),
             profile_export_dialog: ProfileExportDialog::new(theme.clone()),
             profile_import_dialog: ProfileImportDialog::new(theme),
@@ -967,6 +970,7 @@ impl App {
             || self.create_entry_dialog.visible
             || self.schema_viewer.visible
             || self.help_popup.visible
+            || self.about_popup.visible
             || self.log_panel.visible
             || self.profile_export_dialog.visible
             || self.profile_import_dialog.visible
@@ -987,6 +991,7 @@ impl App {
             || self.create_entry_dialog.visible
             || self.schema_viewer.visible
             || self.help_popup.visible
+            || self.about_popup.visible
             || self.log_panel.visible
             || self.profile_export_dialog.visible
             || self.profile_import_dialog.visible
@@ -1011,6 +1016,7 @@ impl App {
         self.create_entry_dialog.hide();
         self.schema_viewer.hide();
         self.help_popup.hide();
+        self.about_popup.hide();
         self.log_panel.hide();
         self.profile_export_dialog.hide();
         self.profile_import_dialog.hide();
@@ -1084,6 +1090,8 @@ impl App {
                             self.schema_viewer.handle_key_event(key)
                         } else if self.help_popup.visible {
                             self.help_popup.handle_key_event(key)
+                        } else if self.about_popup.visible {
+                            self.about_popup.handle_key_event(key)
                         } else if self.log_panel.visible {
                             self.log_panel.handle_key_event(key)
                         } else if self.command_panel.input_active
@@ -1985,9 +1993,12 @@ impl App {
                 }
             }
 
-            // Help
+            // Help / About
             Action::ShowHelp => {
                 self.help_popup.show(&self.keymap);
+            }
+            Action::ShowAbout => {
+                self.about_popup.show();
             }
 
             // Log Panel
@@ -2319,6 +2330,9 @@ impl App {
         }
         if self.help_popup.visible {
             self.help_popup.render(frame, full);
+        }
+        if self.about_popup.visible {
+            self.about_popup.render(frame, full);
         }
         if self.log_panel.visible {
             self.log_panel.render(frame, full);

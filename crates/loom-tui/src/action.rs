@@ -136,8 +136,9 @@ pub enum Action {
     // Schema
     ShowSchemaViewer,
 
-    // Help
+    // Help / About
     ShowHelp,
+    ShowAbout,
     SchemaLoaded(ConnectionId, Box<SchemaCache>),
 
     // Log Panel
