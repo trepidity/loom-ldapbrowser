@@ -109,6 +109,15 @@ impl ConnectionsTree {
                     Action::None
                 }
             }
+            KeyCode::Enter => {
+                if self.selected_key().map(|k| k.as_str()) == Some("action:new") {
+                    Action::ConnMgrNew
+                } else if let Some(idx) = self.selected_profile_index() {
+                    Action::ConnMgrSelect(idx)
+                } else {
+                    Action::None
+                }
+            }
             KeyCode::Char('n') => Action::ConnMgrNew,
             KeyCode::Char('e') => {
                 if let Some(idx) = self.selected_profile_index() {
