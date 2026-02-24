@@ -48,6 +48,7 @@ pub enum Action {
     PrevTab,
     NewTab,
     CloseTab(ConnectionId),
+    CloseCurrentTab,
     SwitchTab(ConnectionId),
 
     // Connection

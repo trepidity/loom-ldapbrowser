@@ -199,6 +199,24 @@ impl Keymap {
                 &defaults.switch_to_profiles,
                 Action::SwitchLayout(ActiveLayout::Profiles),
             ),
+            (
+                "next_tab",
+                &config.next_tab,
+                &defaults.next_tab,
+                Action::NextTab,
+            ),
+            (
+                "prev_tab",
+                &config.prev_tab,
+                &defaults.prev_tab,
+                Action::PrevTab,
+            ),
+            (
+                "close_tab",
+                &config.close_tab,
+                &defaults.close_tab,
+                Action::CloseCurrentTab,
+            ),
         ];
 
         for (name, user_str, default_str, action) in bindings {

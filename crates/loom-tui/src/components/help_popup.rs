@@ -209,6 +209,18 @@ fn build_sections(keymap: &Keymap) -> Vec<HelpSection> {
                     keymap.hint("focus_prev").to_string(),
                     "Previous panel".to_string(),
                 ),
+                (
+                    keymap.hint("next_tab").to_string(),
+                    "Next tab".to_string(),
+                ),
+                (
+                    keymap.hint("prev_tab").to_string(),
+                    "Previous tab".to_string(),
+                ),
+                (
+                    keymap.hint("close_tab").to_string(),
+                    "Close tab".to_string(),
+                ),
                 (keymap.hint("quit").to_string(), "Quit".to_string()),
                 (
                     keymap.hint("force_quit").to_string(),

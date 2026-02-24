@@ -1743,6 +1743,17 @@ impl App {
                 self.connection_form.view_folder(&path, &description);
             }
 
+            Action::CloseCurrentTab => {
+                if let Some(id) = self.active_tab_id {
+                    self.tabs.retain(|t| t.id != id);
+                    self.tab_bar.remove_tab(id);
+                    self.active_tab_id = self.tab_bar.active_tab;
+                    self.detail_panel.clear();
+                    if self.active_tab_id.is_none() {
+                        self.status_bar.set_disconnected();
+                    }
+                }
+            }
             Action::CloseTab(id) => {
                 self.tabs.retain(|t| t.id != id);
                 self.tab_bar.remove_tab(id);

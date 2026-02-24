@@ -91,6 +91,9 @@ pub struct KeybindingConfig {
     pub save_connection: String,
     pub switch_to_browser: String,
     pub switch_to_profiles: String,
+    pub next_tab: String,
+    pub prev_tab: String,
+    pub close_tab: String,
 }
 
 impl Default for KeybindingConfig {
@@ -110,6 +113,9 @@ impl Default for KeybindingConfig {
             save_connection: "F10".to_string(),
             switch_to_browser: "F1".to_string(),
             switch_to_profiles: "F2".to_string(),
+            next_tab: "Ctrl+Right".to_string(),
+            prev_tab: "Ctrl+Left".to_string(),
+            close_tab: "Ctrl+w".to_string(),
         }
     }
 }
