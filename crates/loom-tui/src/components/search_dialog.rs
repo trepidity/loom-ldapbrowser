@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState};
 use ratatui::Frame;
 
 use crate::action::Action;
@@ -14,7 +14,7 @@ pub struct SearchDialog {
     pub visible: bool,
     pub filter: String,
     pub results: Vec<LdapEntry>,
-    list_state: ListState,
+    table_state: TableState,
     theme: Theme,
 }
 
@@ -24,7 +24,7 @@ impl SearchDialog {
             visible: false,
             filter: String::new(),
             results: Vec::new(),
-            list_state: ListState::default(),
+            table_state: TableState::default(),
             theme,
         }
     }
@@ -32,7 +32,7 @@ impl SearchDialog {
     pub fn show_results(&mut self, filter: String, results: Vec<LdapEntry>) {
         self.filter = filter;
         self.results = results;
-        self.list_state.select(if self.results.is_empty() {
+        self.table_state.select(if self.results.is_empty() {
             None
         } else {
             Some(0)
@@ -51,21 +51,21 @@ impl SearchDialog {
 
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
-                let i = self.list_state.selected().unwrap_or(0);
+                let i = self.table_state.selected().unwrap_or(0);
                 if i > 0 {
-                    self.list_state.select(Some(i - 1));
+                    self.table_state.select(Some(i - 1));
                 }
                 Action::None
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                let i = self.list_state.selected().unwrap_or(0);
+                let i = self.table_state.selected().unwrap_or(0);
                 if i + 1 < self.results.len() {
-                    self.list_state.select(Some(i + 1));
+                    self.table_state.select(Some(i + 1));
                 }
                 Action::None
             }
             KeyCode::Enter => {
-                if let Some(idx) = self.list_state.selected() {
+                if let Some(idx) = self.table_state.selected() {
                     if let Some(entry) = self.results.get(idx) {
                         let dn = entry.dn.clone();
                         self.visible = false;
@@ -87,7 +87,7 @@ impl SearchDialog {
             return;
         }
 
-        let popup_width = (full.width as u32 * 80 / 100).min(100) as u16;
+        let popup_width = (full.width as u32 * 90 / 100) as u16;
         let popup_height = (full.height as u32 * 70 / 100).min(40) as u16;
 
         let x = full.x + (full.width.saturating_sub(popup_width)) / 2;
@@ -112,7 +112,7 @@ impl SearchDialog {
             return;
         }
 
-        // Layout: hint (1 line) | results list
+        // Layout: hint (1 line) | results table
         let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(inner);
 
         let hint = Line::from(vec![
@@ -125,22 +125,46 @@ impl SearchDialog {
         ]);
         frame.render_widget(Paragraph::new(hint), layout[0]);
 
-        let items: Vec<ListItem> = self
+        let header = Row::new(vec![
+            Cell::from(Span::styled("DN", self.theme.header)),
+            Cell::from(Span::styled("sAMAccountName", self.theme.header)),
+            Cell::from(Span::styled("Display Name", self.theme.header)),
+            Cell::from(Span::styled("Mail", self.theme.header)),
+        ]);
+
+        let rows: Vec<Row> = self
             .results
             .iter()
             .map(|entry| {
-                let oc = entry.object_classes().join(", ");
-                let line = Line::from(vec![
-                    Span::styled(&entry.dn, self.theme.normal),
-                    Span::styled(format!("  [{}]", oc), self.theme.dimmed),
-                ]);
-                ListItem::new(line)
+                Row::new(vec![
+                    Cell::from(Span::styled(&entry.dn, self.theme.normal)),
+                    Cell::from(Span::styled(
+                        entry.first_value("sAMAccountName").unwrap_or(""),
+                        self.theme.normal,
+                    )),
+                    Cell::from(Span::styled(
+                        entry.first_value("displayName").unwrap_or(""),
+                        self.theme.normal,
+                    )),
+                    Cell::from(Span::styled(
+                        entry.first_value("mail").unwrap_or(""),
+                        self.theme.normal,
+                    )),
+                ])
             })
             .collect();
 
-        let list =
-            List::new(items).highlight_style(self.theme.selected.add_modifier(Modifier::BOLD));
+        let widths = [
+            Constraint::Percentage(40),
+            Constraint::Percentage(15),
+            Constraint::Percentage(20),
+            Constraint::Percentage(25),
+        ];
 
-        frame.render_stateful_widget(list, layout[1], &mut self.list_state.clone());
+        let table = Table::new(rows, widths)
+            .header(header.style(self.theme.header))
+            .highlight_style(self.theme.selected.add_modifier(Modifier::BOLD));
+
+        frame.render_stateful_widget(table, layout[1], &mut self.table_state.clone());
     }
 }
