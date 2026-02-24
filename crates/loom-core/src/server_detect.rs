@@ -92,6 +92,14 @@ impl LdapConnection {
         let supported_controls = get_values(&attrs, "supportedcontrol");
         let supported_extensions = get_values(&attrs, "supportedextension");
 
+        // Log all RootDSE attribute keys for troubleshooting non-standard servers
+        let all_keys: Vec<&String> = attrs.keys().collect();
+        debug!("RootDSE: all attribute keys returned: {:?}", all_keys);
+        debug!(
+            "RootDSE: subschemaSubentry={:?}, namingContexts={:?}, vendorName={:?}, vendorVersion={:?}",
+            subschema_subentry, naming_contexts, vendor_name, vendor_version
+        );
+
         let server_type = detect_server_type(&attrs, &vendor_name, &supported_controls);
         debug!("Detected server type: {}", server_type);
 

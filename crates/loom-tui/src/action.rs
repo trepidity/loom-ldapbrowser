@@ -81,6 +81,16 @@ pub enum Action {
     SearchClear,
     SearchFocusInput,
 
+    // Live Search (debounced preview while typing)
+    LiveSearchRequest {
+        generation: u64,
+        filter: String,
+    },
+    LiveSearchResults {
+        generation: u64,
+        entries: Vec<LdapEntry>,
+    },
+
     // Attribute Editing
     EditAttribute(String, String, String), // dn, attr_name, current_value
     AddAttribute(String, String),          // dn, attr_name

@@ -38,6 +38,14 @@ fn is_false(v: &bool) -> bool {
     !v
 }
 
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+fn default_true() -> bool {
+    true
+}
+
 fn default_port() -> u16 {
     389
 }
@@ -135,6 +143,10 @@ pub struct GeneralConfig {
     pub tick_rate_ms: u64,
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub autocomplete: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub live_search: bool,
 }
 
 fn default_theme() -> String {
@@ -153,6 +165,8 @@ impl Default for GeneralConfig {
             theme: default_theme(),
             tick_rate_ms: default_tick_rate(),
             log_level: default_log_level(),
+            autocomplete: true,
+            live_search: true,
         }
     }
 }
@@ -476,6 +490,45 @@ host = "localhost"
     fn test_import_profiles_invalid_toml() {
         let result = AppConfig::import_profiles("this is not valid toml {{{}}}");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_autocomplete_and_live_search_default_true() {
+        let config = AppConfig::default();
+        assert!(config.general.autocomplete);
+        assert!(config.general.live_search);
+    }
+
+    #[test]
+    fn test_autocomplete_and_live_search_omitted_defaults_true() {
+        let toml = r#"
+[general]
+theme = "dark"
+"#;
+        let config = AppConfig::from_toml(toml).unwrap();
+        assert!(config.general.autocomplete);
+        assert!(config.general.live_search);
+    }
+
+    #[test]
+    fn test_autocomplete_and_live_search_explicit_false() {
+        let toml = r#"
+[general]
+autocomplete = false
+live_search = false
+"#;
+        let config = AppConfig::from_toml(toml).unwrap();
+        assert!(!config.general.autocomplete);
+        assert!(!config.general.live_search);
+    }
+
+    #[test]
+    fn test_autocomplete_true_not_serialized() {
+        let config = AppConfig::default();
+        let serialized = toml::to_string_pretty(&config).unwrap();
+        // When true (default), these fields should be skipped
+        assert!(!serialized.contains("autocomplete"));
+        assert!(!serialized.contains("live_search"));
     }
 
     #[test]

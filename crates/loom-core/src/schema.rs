@@ -168,47 +168,109 @@ impl Default for SchemaCache {
 
 impl LdapConnection {
     /// Discover and load the schema from the server.
+    ///
+    /// Tries the provided `subschema_dn` first, then falls back to common
+    /// schema locations used by different LDAP servers (Radiant Logic IDDM,
+    /// OpenDJ, etc.).
     pub async fn load_schema(
         &mut self,
         subschema_dn: Option<&str>,
     ) -> Result<SchemaCache, CoreError> {
-        // Determine schema DN — prefer the one discovered from root DSE
-        let schema_dn = match subschema_dn {
-            Some(dn) => {
-                debug!("Loading schema from subschemaSubentry: {}", dn);
-                dn.to_string()
+        // Build list of DNs to try — preferred first, then fallbacks
+        let mut dns_to_try: Vec<String> = Vec::new();
+        if let Some(dn) = subschema_dn {
+            dns_to_try.push(dn.to_string());
+        }
+        // Add fallbacks if they aren't already in the list
+        for fallback in ["cn=Subschema", "cn=schema"] {
+            if !dns_to_try.iter().any(|d| d.eq_ignore_ascii_case(fallback)) {
+                dns_to_try.push(fallback.to_string());
             }
-            None => {
-                debug!("No subschemaSubentry found in root DSE, falling back to cn=Subschema");
-                "cn=Subschema".to_string()
-            }
-        };
+        }
 
+        debug!(
+            "load_schema: subschema_dn={:?}, will try DNs in order: {:?}",
+            subschema_dn, dns_to_try
+        );
+
+        let mut last_err = None;
+        for (i, schema_dn) in dns_to_try.iter().enumerate() {
+            debug!("load_schema: attempt {}/{} — trying DN {:?}", i + 1, dns_to_try.len(), schema_dn);
+            match self.try_load_schema_from(schema_dn).await {
+                Ok(cache) if !cache.attribute_types.is_empty() => {
+                    debug!(
+                        "load_schema: SUCCESS from {:?} — {} attr types, {} obj classes",
+                        schema_dn,
+                        cache.attribute_types.len(),
+                        cache.object_classes.len()
+                    );
+                    return Ok(cache);
+                }
+                Ok(cache) => {
+                    debug!(
+                        "load_schema: got entry from {:?} but 0 attribute types ({} obj classes), trying next",
+                        schema_dn,
+                        cache.object_classes.len()
+                    );
+                }
+                Err(e) => {
+                    debug!("load_schema: FAILED from {:?}: {}", schema_dn, e);
+                    last_err = Some(e);
+                }
+            }
+        }
+
+        debug!("load_schema: all {} DNs exhausted, returning error", dns_to_try.len());
+        Err(last_err.unwrap_or_else(|| CoreError::SchemaError("No schema found".into())))
+    }
+
+    /// Try to load schema from a specific DN.
+    async fn try_load_schema_from(&mut self, schema_dn: &str) -> Result<SchemaCache, CoreError> {
+        debug!("try_load_schema_from: searching base={:?} scope=Base filter=(objectClass=*)", schema_dn);
         let result = self
             .ldap
             .search(
-                &schema_dn,
+                schema_dn,
                 Scope::Base,
                 "(objectClass=*)",
                 vec!["attributeTypes", "objectClasses"],
             )
             .await
-            .map_err(CoreError::Ldap)?;
+            .map_err(|e| {
+                debug!("try_load_schema_from: LDAP search error for {:?}: {}", schema_dn, e);
+                CoreError::Ldap(e)
+            })?;
 
         let (entries, _res) = result
             .success()
-            .map_err(|e| CoreError::SchemaError(format!("Schema search failed: {}", e)))?;
+            .map_err(|e| {
+                debug!("try_load_schema_from: search result error for {:?}: {}", schema_dn, e);
+                CoreError::SchemaError(format!("Schema search failed: {}", e))
+            })?;
+
+        debug!("try_load_schema_from: got {} entries from {:?}", entries.len(), schema_dn);
 
         let mut cache = SchemaCache::new();
 
         if let Some(entry) = entries.into_iter().next().map(SearchEntry::construct) {
             let attrs: BTreeMap<String, Vec<String>> = entry.attrs.into_iter().collect();
 
+            // Log the attribute keys returned for troubleshooting
+            let attr_keys: Vec<&String> = attrs.keys().collect();
+            debug!(
+                "try_load_schema_from: entry DN={:?}, returned attribute keys: {:?}",
+                entry.dn, attr_keys
+            );
+
             // Parse attributeTypes
             if let Some(attr_types) = find_values_ci(&attrs, "attributetypes") {
+                debug!("try_load_schema_from: found {} attributeTypes definitions", attr_types.len());
+                let mut parsed_count = 0u32;
+                let mut failed_count = 0u32;
                 for def in attr_types {
                     match parse_attribute_type(def) {
                         Some(at) => {
+                            parsed_count += 1;
                             for name in &at.names {
                                 cache
                                     .attribute_types
@@ -216,6 +278,7 @@ impl LdapConnection {
                             }
                         }
                         None => {
+                            failed_count += 1;
                             debug!(
                                 "Failed to parse attributeType: {}",
                                 &def[..def.len().min(80)]
@@ -223,26 +286,44 @@ impl LdapConnection {
                         }
                     }
                 }
+                debug!(
+                    "try_load_schema_from: parsed {} attributeTypes, {} failed",
+                    parsed_count, failed_count
+                );
+            } else {
+                debug!("try_load_schema_from: no 'attributeTypes' attribute found in entry from {:?}", schema_dn);
             }
 
             // Parse objectClasses
             if let Some(obj_classes) = find_values_ci(&attrs, "objectclasses") {
+                debug!("try_load_schema_from: found {} objectClasses definitions", obj_classes.len());
+                let mut parsed_count = 0u32;
+                let mut failed_count = 0u32;
                 for def in obj_classes {
                     match parse_object_class(def) {
                         Some(oc) => {
+                            parsed_count += 1;
                             for name in &oc.names {
                                 cache.object_classes.insert(name.to_lowercase(), oc.clone());
                             }
                         }
                         None => {
+                            failed_count += 1;
                             debug!("Failed to parse objectClass: {}", &def[..def.len().min(80)]);
                         }
                     }
                 }
+                debug!(
+                    "try_load_schema_from: parsed {} objectClasses, {} failed",
+                    parsed_count, failed_count
+                );
+            } else {
+                debug!("try_load_schema_from: no 'objectClasses' attribute found in entry from {:?}", schema_dn);
             }
 
             debug!(
-                "Loaded schema: {} attribute types, {} object classes",
+                "Loaded schema from {}: {} attribute types, {} object classes",
+                schema_dn,
                 cache.attribute_types.len(),
                 cache.object_classes.len()
             );

@@ -1,3 +1,66 @@
+/// The kind of filter context the cursor is in.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilterContext {
+    /// Cursor in attribute-name position. `partial` is text typed so far.
+    AttributeName { partial: String },
+    /// Cursor in value position after operator. `attr` is the attribute name.
+    Value { attr: String, partial: String },
+    /// Buffer is empty or just `(` — show template suggestions.
+    Empty,
+}
+
+/// Detect the filter context at the cursor position (end of input).
+///
+/// Returns:
+/// - `Some(FilterContext::Empty)` when input is empty or just `(`
+/// - `Some(FilterContext::AttributeName)` when cursor is in attribute-name position
+/// - `Some(FilterContext::Value)` when cursor is after an operator in value position
+/// - `None` when all parens are matched (filter looks complete)
+pub fn detect_filter_context(input: &str) -> Option<FilterContext> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() || trimmed == "(" {
+        return Some(FilterContext::Empty);
+    }
+
+    // Use a stack to track unmatched '(' positions
+    let mut stack = Vec::new();
+    for (i, ch) in input.char_indices() {
+        match ch {
+            '(' => stack.push(i),
+            ')' => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+
+    let open_pos = match stack.last() {
+        Some(&pos) => pos,
+        None => return None, // all parens matched
+    };
+
+    let after_paren = &input[open_pos + 1..];
+
+    // Strip leading boolean operators (&, |, !)
+    let content = after_paren.trim_start_matches(['&', '|', '!']);
+
+    // Check for comparison operators to determine if we're in value position
+    // Try two-char operators first, then single '='
+    for op in &["~=", ">=", "<=", "="] {
+        if let Some(op_pos) = content.find(op) {
+            let attr = content[..op_pos].to_string();
+            let value_start = op_pos + op.len();
+            let partial = content[value_start..].to_string();
+            return Some(FilterContext::Value { attr, partial });
+        }
+    }
+
+    // No operator found — we're in attribute-name position
+    Some(FilterContext::AttributeName {
+        partial: content.to_string(),
+    })
+}
+
 /// Detect whether the cursor (at end of input) is in attribute-name position.
 /// Returns `Some(partial)` with the partial attribute text if so, `None` if
 /// the user is in value position or the input doesn't look like a filter context.
@@ -351,5 +414,117 @@ mod tests {
     #[test]
     fn test_context_boolean_operator_prefix() {
         assert_eq!(detect_attribute_context("(|obj"), Some("obj".to_string()));
+    }
+
+    // ---- detect_filter_context tests ----
+
+    #[test]
+    fn test_filter_context_empty_input() {
+        assert_eq!(detect_filter_context(""), Some(FilterContext::Empty));
+    }
+
+    #[test]
+    fn test_filter_context_just_open_paren() {
+        assert_eq!(detect_filter_context("("), Some(FilterContext::Empty));
+    }
+
+    #[test]
+    fn test_filter_context_attribute_name() {
+        assert_eq!(
+            detect_filter_context("(userPr"),
+            Some(FilterContext::AttributeName {
+                partial: "userPr".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_filter_context_nested_attribute() {
+        assert_eq!(
+            detect_filter_context("(&(cn=admin)(obj"),
+            Some(FilterContext::AttributeName {
+                partial: "obj".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_filter_context_value_equals() {
+        assert_eq!(
+            detect_filter_context("(cn=adm"),
+            Some(FilterContext::Value {
+                attr: "cn".to_string(),
+                partial: "adm".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_filter_context_value_objectclass() {
+        assert_eq!(
+            detect_filter_context("(objectClass=per"),
+            Some(FilterContext::Value {
+                attr: "objectClass".to_string(),
+                partial: "per".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_filter_context_value_approx() {
+        assert_eq!(
+            detect_filter_context("(cn~=val"),
+            Some(FilterContext::Value {
+                attr: "cn".to_string(),
+                partial: "val".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_filter_context_value_gte() {
+        assert_eq!(
+            detect_filter_context("(uidNumber>=100"),
+            Some(FilterContext::Value {
+                attr: "uidNumber".to_string(),
+                partial: "100".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_filter_context_value_empty() {
+        assert_eq!(
+            detect_filter_context("(cn="),
+            Some(FilterContext::Value {
+                attr: "cn".to_string(),
+                partial: String::new()
+            })
+        );
+    }
+
+    #[test]
+    fn test_filter_context_all_matched() {
+        assert_eq!(detect_filter_context("(cn=test)"), None);
+    }
+
+    #[test]
+    fn test_filter_context_empty_attr_after_bool() {
+        assert_eq!(
+            detect_filter_context("(&("),
+            Some(FilterContext::AttributeName {
+                partial: String::new()
+            })
+        );
+    }
+
+    #[test]
+    fn test_filter_context_after_not() {
+        assert_eq!(
+            detect_filter_context("(!(mem"),
+            Some(FilterContext::AttributeName {
+                partial: "mem".to_string()
+            })
+        );
     }
 }
