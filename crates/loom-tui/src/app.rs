@@ -226,6 +226,16 @@ impl App {
         self.tabs.iter_mut().find(|t| t.id == id)
     }
 
+    fn push_message(&mut self, msg: String) {
+        self.command_panel.push_message(msg.clone());
+        self.log_panel.push_info(msg);
+    }
+
+    fn push_error(&mut self, msg: String) {
+        self.command_panel.push_error(msg.clone());
+        self.log_panel.push_error(msg);
+    }
+
     /// Connect to the first configured connection profile.
     /// Auth errors are handled gracefully by showing a credential prompt.
     pub async fn connect_first_profile(&mut self) {
@@ -234,13 +244,11 @@ impl App {
             match self.connect_profile(&profile).await {
                 Ok(()) => {}
                 Err(e) if is_auth_error(&e) => {
-                    self.command_panel
-                        .push_error(format!("Authentication failed: {}", e));
+                    self.push_error(format!("Authentication failed: {}", e));
                     self.credential_prompt.show(profile);
                 }
                 Err(e) => {
-                    self.command_panel
-                        .push_error(format!("Connection failed: {}", e));
+                    self.push_error(format!("Connection failed: {}", e));
                 }
             }
         } else {
@@ -295,8 +303,7 @@ impl App {
             .add_tab(conn_id, "Example Directory".to_string());
         self.active_tab_id = Some(conn_id);
         self.spawn_load_children(conn_id, base_dn);
-        self.command_panel
-            .push_message("Connected to example directory (read-only)".to_string());
+        self.push_message("Connected to example directory (read-only)".to_string());
         self.status_bar
             .set_connected("contoso.example", "Active Directory (Example)");
     }
@@ -306,8 +313,7 @@ impl App {
         profile: &ConnectionProfile,
         password: &str,
     ) -> anyhow::Result<()> {
-        self.command_panel
-            .push_message(format!("Connecting to {}...", profile.host));
+        self.push_message(format!("Connecting to {}...", profile.host));
 
         let settings = profile.to_connection_settings();
         let mut conn = LdapConnection::connect(settings).await?;
@@ -333,8 +339,7 @@ impl App {
                 // Log all raw RootDSE attribute keys for troubleshooting
                 let raw_keys: Vec<&String> = root_dse.raw.keys().collect();
                 debug!("RootDSE raw attribute keys: {:?}", raw_keys);
-                self.command_panel
-                    .push_message(format!("Server type: {}", st));
+                self.push_message(format!("Server type: {}", st));
                 (st, root_dse.subschema_subentry)
             }
             Err(e) => {
@@ -351,10 +356,12 @@ impl App {
 
         let read_only = profile.read_only;
         let ro_suffix = if read_only { " (read-only)" } else { "" };
-        self.status_bar.set_message(format!(
+        let conn_msg = format!(
             "Connected to {} (base: {}){}",
             host, base_dn, ro_suffix
-        ));
+        );
+        self.status_bar.set_message(conn_msg.clone());
+        self.log_panel.push_info(conn_msg);
         self.status_bar.set_connected(&host, &server_type_str);
 
         let connection = Arc::new(Mutex::new(conn));
@@ -1523,13 +1530,11 @@ impl App {
                     match self.connect_profile(&profile).await {
                         Ok(()) => {}
                         Err(e) if is_auth_error(&e) => {
-                            self.command_panel
-                                .push_error(format!("Authentication failed: {}", e));
+                            self.push_error(format!("Authentication failed: {}", e));
                             self.credential_prompt.show(profile);
                         }
                         Err(e) => {
-                            self.command_panel
-                                .push_error(format!("Connection failed: {}", e));
+                            self.push_error(format!("Connection failed: {}", e));
                         }
                     }
                 }
@@ -1539,19 +1544,19 @@ impl App {
                 match self.connect_with_password(&profile, &password).await {
                     Ok(()) => {
                         self.last_adhoc_profile = Some(profile_clone);
-                        self.status_bar.set_message(format!(
+                        let tip_msg = format!(
                             "Tip: Press {} to save this connection to config",
                             self.keymap.hint("save_connection"),
-                        ));
+                        );
+                        self.status_bar.set_message(tip_msg.clone());
+                        self.log_panel.push_info(tip_msg);
                     }
                     Err(e) if is_auth_error(&e) => {
-                        self.command_panel
-                            .push_error(format!("Authentication failed: {}", e));
+                        self.push_error(format!("Authentication failed: {}", e));
                         self.credential_prompt.show(profile_clone);
                     }
                     Err(e) => {
-                        self.command_panel
-                            .push_error(format!("Connection failed: {}", e));
+                        self.push_error(format!("Connection failed: {}", e));
                     }
                 }
             }
@@ -1562,19 +1567,19 @@ impl App {
                 let profile_clone = profile.clone();
                 match self.connect_with_password(&profile, &password).await {
                     Ok(()) => {
-                        self.status_bar.set_message(format!(
+                        let auth_msg = format!(
                             "Authenticated as {}",
                             profile.bind_dn.as_deref().unwrap_or("anonymous")
-                        ));
+                        );
+                        self.status_bar.set_message(auth_msg.clone());
+                        self.log_panel.push_info(auth_msg);
                     }
                     Err(e) if is_auth_error(&e) => {
-                        self.command_panel
-                            .push_error(format!("Authentication failed: {}", e));
+                        self.push_error(format!("Authentication failed: {}", e));
                         self.credential_prompt.show(profile_clone);
                     }
                     Err(e) => {
-                        self.command_panel
-                            .push_error(format!("Connection failed: {}", e));
+                        self.push_error(format!("Connection failed: {}", e));
                     }
                 }
             }
@@ -1582,20 +1587,20 @@ impl App {
                 if let Some(profile) = self.last_adhoc_profile.take() {
                     match AppConfig::append_connection(&profile) {
                         Ok(()) => {
-                            self.status_bar.set_message(format!(
+                            let save_msg = format!(
                                 "Saved connection '{}' to config",
                                 profile.name
-                            ));
+                            );
+                            self.status_bar.set_message(save_msg.clone());
+                            self.log_panel.push_info(save_msg);
                             self.config.connections.push(profile);
                         }
                         Err(e) => {
-                            self.command_panel
-                                .push_error(format!("Failed to save connection: {}", e));
+                            self.push_error(format!("Failed to save connection: {}", e));
                         }
                     }
                 } else {
-                    self.command_panel
-                        .push_message("No ad-hoc connection to save".to_string());
+                    self.push_message("No ad-hoc connection to save".to_string());
                 }
             }
             // Layout switching
@@ -1621,15 +1626,14 @@ impl App {
             }
             Action::ConnMgrSave(idx, profile) => {
                 if idx >= self.config.connections.len() {
-                    self.command_panel
-                        .push_error("Cannot edit example profile".to_string());
+                    self.push_error("Cannot edit example profile".to_string());
                 } else {
                     self.config.update_connection(idx, *profile);
                     if let Err(e) = self.config.save() {
-                        self.command_panel
-                            .push_error(format!("Failed to save config: {}", e));
+                        self.push_error(format!("Failed to save config: {}", e));
                     } else {
                         self.status_bar.set_message("Profile saved".to_string());
+                        self.log_panel.push_info("Profile saved".to_string());
                     }
                     if let Some(updated) = self.config.connections.get(idx) {
                         self.connection_form.view_profile(idx, updated);
@@ -1640,11 +1644,9 @@ impl App {
                 self.config.connections.push(*profile);
                 let new_idx = self.config.connections.len() - 1;
                 if let Err(e) = self.config.save() {
-                    self.command_panel
-                        .push_error(format!("Failed to save config: {}", e));
+                    self.push_error(format!("Failed to save config: {}", e));
                 } else {
-                    self.command_panel
-                        .push_message("Profile created".to_string());
+                    self.push_message("Profile created".to_string());
                 }
                 if let Some(created) = self.config.connections.get(new_idx) {
                     self.connection_form.view_profile(new_idx, created);
@@ -1652,16 +1654,13 @@ impl App {
             }
             Action::ConnMgrDelete(idx) => {
                 if idx >= self.config.connections.len() {
-                    self.command_panel
-                        .push_error("Cannot delete example profile".to_string());
+                    self.push_error("Cannot delete example profile".to_string());
                 } else {
                     self.config.delete_connection(idx);
                     if let Err(e) = self.config.save() {
-                        self.command_panel
-                            .push_error(format!("Failed to save config: {}", e));
+                        self.push_error(format!("Failed to save config: {}", e));
                     } else {
-                        self.command_panel
-                            .push_message("Profile deleted".to_string());
+                        self.push_message("Profile deleted".to_string());
                     }
                     self.connection_form.clear();
                 }
@@ -1681,13 +1680,11 @@ impl App {
                             self.focus.set_layout(ActiveLayout::Browser);
                         }
                         Err(e) if is_auth_error(&e) => {
-                            self.command_panel
-                                .push_error(format!("Authentication failed: {}", e));
+                            self.push_error(format!("Authentication failed: {}", e));
                             self.credential_prompt.show(profile);
                         }
                         Err(e) => {
-                            self.command_panel
-                                .push_error(format!("Connection failed: {}", e));
+                            self.push_error(format!("Connection failed: {}", e));
                         }
                     }
                 }
@@ -1695,8 +1692,7 @@ impl App {
 
             Action::ConnMgrExport => {
                 if self.config.connections.is_empty() {
-                    self.command_panel
-                        .push_error("No profiles to export".to_string());
+                    self.push_error("No profiles to export".to_string());
                 } else {
                     self.profile_export_dialog.show(&self.config.connections);
                 }
@@ -1710,11 +1706,9 @@ impl App {
                     self.config.connections.push(p);
                 }
                 if let Err(e) = self.config.save() {
-                    self.command_panel
-                        .push_error(format!("Failed to save config: {}", e));
+                    self.push_error(format!("Failed to save config: {}", e));
                 } else {
-                    self.command_panel
-                        .push_message(format!("Imported {} profile(s)", count));
+                    self.push_message(format!("Imported {} profile(s)", count));
                 }
                 // Refresh the form if a profile was being viewed
                 if let Some(idx) = self.config.connections.len().checked_sub(1) {
@@ -1742,11 +1736,9 @@ impl App {
                     });
                 }
                 if let Err(e) = self.config.save() {
-                    self.command_panel
-                        .push_error(format!("Failed to save config: {}", e));
+                    self.push_error(format!("Failed to save config: {}", e));
                 } else {
-                    self.command_panel
-                        .push_message("Folder description saved".to_string());
+                    self.push_message("Folder description saved".to_string());
                 }
                 self.connection_form.view_folder(&path, &description);
             }
@@ -1783,10 +1775,12 @@ impl App {
             Action::TreeChildrenLoaded(conn_id, parent_dn, nodes) => {
                 if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == conn_id) {
                     tab.directory_tree.insert_children(&parent_dn, nodes);
-                    self.status_bar.set_message(format!(
+                    let loaded_msg = format!(
                         "Loaded children of {}",
                         loom_core::dn::rdn_display_name(&parent_dn)
-                    ));
+                    );
+                    self.status_bar.set_message(loaded_msg.clone());
+                    self.log_panel.push_info(loaded_msg);
                 }
             }
             Action::EntryLoaded(_conn_id, entry) => {
@@ -1932,10 +1926,12 @@ impl App {
                 }
             }
             Action::AttributeSaved(dn) => {
-                self.status_bar.set_message(format!(
+                let saved_msg = format!(
                     "Saved changes to {}",
                     loom_core::dn::rdn_display_name(&dn)
-                ));
+                );
+                self.status_bar.set_message(saved_msg.clone());
+                self.log_panel.push_info(saved_msg);
                 // Refresh the entry
                 if let Some(id) = self.active_tab_id {
                     self.spawn_load_entry(id, dn);
@@ -1952,8 +1948,7 @@ impl App {
                         .unwrap_or_else(|| tab.directory_tree.root_dn.clone());
                     self.export_dialog.show(&base_dn);
                 } else {
-                    self.command_panel
-                        .push_error("No active connection".to_string());
+                    self.push_error("No active connection".to_string());
                 }
             }
             Action::ExportExecute {
@@ -1963,13 +1958,13 @@ impl App {
                 attributes,
             } => {
                 if let Some(id) = self.active_tab_id {
-                    self.command_panel
-                        .push_message(format!("Exporting to {} (filter: {})...", path, filter));
+                    self.push_message(format!("Exporting to {} (filter: {})...", path, filter));
                     self.spawn_export(id, path, base_dn, filter, attributes);
                 }
             }
             Action::ExportComplete(msg) => {
-                self.status_bar.set_message(msg);
+                self.status_bar.set_message(msg.clone());
+                self.log_panel.push_info(msg);
             }
 
             // Bulk Update
@@ -1977,8 +1972,7 @@ impl App {
                 if self.active_tab_id.is_some() {
                     self.bulk_update_dialog.show();
                 } else {
-                    self.command_panel
-                        .push_error("No active connection".to_string());
+                    self.push_error("No active connection".to_string());
                 }
             }
             Action::BulkUpdateExecute {
@@ -2009,13 +2003,13 @@ impl App {
                             }
                         }
                     };
-                    self.command_panel
-                        .push_message(format!("Executing bulk update: {}...", filter));
+                    self.push_message(format!("Executing bulk update: {}...", filter));
                     self.spawn_bulk_update(id, filter, vec![modification]);
                 }
             }
             Action::BulkUpdateComplete(msg) => {
-                self.status_bar.set_message(msg);
+                self.status_bar.set_message(msg.clone());
+                self.log_panel.push_info(msg);
             }
 
             // Create / Delete Entry
@@ -2023,22 +2017,22 @@ impl App {
                 if self.active_tab_id.is_some() {
                     self.create_entry_dialog.show(parent_dn);
                 } else {
-                    self.command_panel
-                        .push_error("No active connection".to_string());
+                    self.push_error("No active connection".to_string());
                 }
             }
             Action::CreateEntry { dn, attributes } => {
                 if let Some(id) = self.active_tab_id {
-                    self.command_panel
-                        .push_message(format!("Creating entry: {}...", dn));
+                    self.push_message(format!("Creating entry: {}...", dn));
                     self.spawn_create_entry(id, dn, attributes);
                 }
             }
             Action::EntryCreated(dn) => {
-                self.status_bar.set_message(format!(
+                let created_msg = format!(
                     "Created entry: {}",
                     loom_core::dn::rdn_display_name(&dn)
-                ));
+                );
+                self.status_bar.set_message(created_msg.clone());
+                self.log_panel.push_info(created_msg);
                 // Refresh parent's children in the tree
                 if let Some(id) = self.active_tab_id {
                     if let Some(parent) = loom_core::dn::parent_dn(&dn) {
@@ -2048,16 +2042,17 @@ impl App {
             }
             Action::DeleteEntry(dn) => {
                 if let Some(id) = self.active_tab_id {
-                    self.command_panel
-                        .push_message(format!("Deleting entry: {}...", dn));
+                    self.push_message(format!("Deleting entry: {}...", dn));
                     self.spawn_delete_entry(id, dn);
                 }
             }
             Action::EntryDeleted(dn) => {
-                self.status_bar.set_message(format!(
+                let deleted_msg = format!(
                     "Deleted entry: {}",
                     loom_core::dn::rdn_display_name(&dn)
-                ));
+                );
+                self.status_bar.set_message(deleted_msg.clone());
+                self.log_panel.push_info(deleted_msg);
                 // Clear detail panel if showing the deleted entry
                 if let Some(ref entry) = self.detail_panel.entry {
                     if entry.dn == dn {
@@ -2086,15 +2081,13 @@ impl App {
                         self.schema_viewer.show(&schema);
                     }
                     Some((_, id)) => {
-                        self.command_panel
-                            .push_message("Loading schema...".to_string());
+                        self.push_message("Loading schema...".to_string());
                         // Mark viewer as pending so SchemaLoaded knows to show it
                         self.schema_viewer.visible = true;
                         self.spawn_load_schema(id);
                     }
                     None => {
-                        self.command_panel
-                            .push_error("No active connection".to_string());
+                        self.push_error("No active connection".to_string());
                     }
                 }
             }
@@ -2111,11 +2104,13 @@ impl App {
                 let schema_empty = schema.attribute_types.is_empty();
                 if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == conn_id) {
                     if !schema_empty {
-                        self.status_bar.set_message(format!(
+                        let schema_msg = format!(
                             "Schema loaded: {} attribute types, {} object classes",
                             schema.attribute_types.len(),
                             schema.object_classes.len()
-                        ));
+                        );
+                        self.status_bar.set_message(schema_msg.clone());
+                        self.log_panel.push_info(schema_msg);
                     } else {
                         debug!("SchemaLoaded: schema is empty for conn_id={}, will use fallback attributes", conn_id);
                     }
