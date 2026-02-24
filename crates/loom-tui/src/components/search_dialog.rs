@@ -77,6 +77,30 @@ impl SearchDialog {
                 }
                 Action::None
             }
+            KeyCode::PageUp => {
+                let i = self.table_state.selected().unwrap_or(0);
+                self.table_state.select(Some(i.saturating_sub(10)));
+                Action::None
+            }
+            KeyCode::PageDown => {
+                let i = self.table_state.selected().unwrap_or(0);
+                let max = self.results.len().saturating_sub(1);
+                self.table_state.select(Some((i + 10).min(max)));
+                Action::None
+            }
+            KeyCode::Home => {
+                if !self.results.is_empty() {
+                    self.table_state.select(Some(0));
+                }
+                Action::None
+            }
+            KeyCode::End => {
+                if !self.results.is_empty() {
+                    self.table_state
+                        .select(Some(self.results.len().saturating_sub(1)));
+                }
+                Action::None
+            }
             KeyCode::Enter => {
                 if let Some(idx) = self.table_state.selected() {
                     if let Some(entry) = self.results.get(idx) {
