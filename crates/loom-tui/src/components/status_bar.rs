@@ -11,6 +11,8 @@ use crate::theme::Theme;
 pub struct StatusBar {
     pub connection_info: String,
     pub entry_count: Option<usize>,
+    pub message: Option<String>,
+    pub message_is_error: bool,
     theme: Theme,
     hints: String,
 }
@@ -27,6 +29,8 @@ impl StatusBar {
         Self {
             connection_info: String::new(),
             entry_count: None,
+            message: None,
+            message_is_error: false,
             theme,
             hints,
         }
@@ -39,6 +43,16 @@ impl StatusBar {
     pub fn set_disconnected(&mut self) {
         self.connection_info = String::new();
         self.entry_count = None;
+    }
+
+    pub fn set_message(&mut self, text: String) {
+        self.message = Some(text);
+        self.message_is_error = false;
+    }
+
+    pub fn set_error(&mut self, text: String) {
+        self.message = Some(text);
+        self.message_is_error = true;
     }
 }
 
@@ -57,16 +71,30 @@ impl Component for StatusBar {
             s
         };
 
+        // Middle: transient message
+        let mid = self
+            .message
+            .as_deref()
+            .map(|m| format!(" {} ", m))
+            .unwrap_or_default();
+        let mid_style = if self.message_is_error {
+            self.theme.error
+        } else {
+            self.theme.status_bar
+        };
+
         // Right side: keybinding hints (with trailing space)
         let right = format!("{} ", self.hints);
 
         let left_len = left.len();
+        let mid_len = mid.len();
         let right_len = right.len();
-        let gap = width.saturating_sub(left_len + right_len);
+        let gap = width.saturating_sub(left_len + mid_len + right_len);
         let padding = " ".repeat(gap);
 
         let line = Line::from(vec![
             Span::styled(left, self.theme.status_bar),
+            Span::styled(mid, mid_style),
             Span::styled(padding, self.theme.status_bar),
             Span::styled(right, self.theme.status_bar),
         ]);

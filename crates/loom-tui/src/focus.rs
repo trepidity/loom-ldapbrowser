@@ -8,11 +8,7 @@ pub struct FocusManager {
 
 impl FocusManager {
     pub fn new() -> Self {
-        let panels = vec![
-            FocusTarget::TreePanel,
-            FocusTarget::DetailPanel,
-            FocusTarget::CommandPanel,
-        ];
+        let panels = vec![FocusTarget::TreePanel, FocusTarget::DetailPanel];
         Self {
             current: FocusTarget::TreePanel,
             panels,
@@ -44,11 +40,7 @@ impl FocusManager {
     /// Switch panel lists based on the active layout.
     pub fn set_layout(&mut self, layout: ActiveLayout) {
         self.panels = match layout {
-            ActiveLayout::Browser => vec![
-                FocusTarget::TreePanel,
-                FocusTarget::DetailPanel,
-                FocusTarget::CommandPanel,
-            ],
+            ActiveLayout::Browser => vec![FocusTarget::TreePanel, FocusTarget::DetailPanel],
             ActiveLayout::Profiles => {
                 vec![FocusTarget::ConnectionsTree, FocusTarget::ConnectionForm]
             }
@@ -94,9 +86,6 @@ mod tests {
         assert_eq!(fm.current(), FocusTarget::DetailPanel);
 
         fm.next();
-        assert_eq!(fm.current(), FocusTarget::CommandPanel);
-
-        fm.next();
         assert_eq!(fm.current(), FocusTarget::TreePanel); // wraps
     }
 
@@ -104,10 +93,7 @@ mod tests {
     fn test_focus_prev_cycles() {
         let mut fm = FocusManager::new();
         fm.prev();
-        assert_eq!(fm.current(), FocusTarget::CommandPanel); // wraps back
-
-        fm.prev();
-        assert_eq!(fm.current(), FocusTarget::DetailPanel);
+        assert_eq!(fm.current(), FocusTarget::DetailPanel); // wraps back
 
         fm.prev();
         assert_eq!(fm.current(), FocusTarget::TreePanel);
@@ -116,9 +102,9 @@ mod tests {
     #[test]
     fn test_focus_set() {
         let mut fm = FocusManager::new();
-        fm.set(FocusTarget::CommandPanel);
-        assert_eq!(fm.current(), FocusTarget::CommandPanel);
-        assert!(fm.is_focused(FocusTarget::CommandPanel));
+        fm.set(FocusTarget::DetailPanel);
+        assert_eq!(fm.current(), FocusTarget::DetailPanel);
+        assert!(fm.is_focused(FocusTarget::DetailPanel));
         assert!(!fm.is_focused(FocusTarget::TreePanel));
     }
 }

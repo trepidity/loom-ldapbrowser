@@ -44,6 +44,19 @@ impl SearchDialog {
         self.visible = false;
     }
 
+    /// Reset the table selection to the first row (or none if empty).
+    pub fn reset_selection(&mut self) {
+        self.table_state.select(if self.results.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
+    }
+
+    pub fn has_results(&self) -> bool {
+        !self.results.is_empty()
+    }
+
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Action {
         if !self.visible {
             return Action::None;
@@ -80,6 +93,72 @@ impl SearchDialog {
             }
             _ => Action::None,
         }
+    }
+
+    /// Render just the results table into a given area (no popup chrome, no Clear).
+    pub fn render_results(&mut self, frame: &mut Frame, area: Rect) {
+        if self.results.is_empty() {
+            let msg = Paragraph::new("No results found.").style(self.theme.dimmed);
+            frame.render_widget(msg, area);
+            return;
+        }
+
+        // Layout: hint (1 line) | results table
+        let layout = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(area);
+
+        let hint = Line::from(vec![
+            Span::styled("  \u{2191}/\u{2193}", self.theme.header),
+            Span::styled(": navigate  ", self.theme.dimmed),
+            Span::styled("Enter", self.theme.header),
+            Span::styled(": select  ", self.theme.dimmed),
+            Span::styled("Esc", self.theme.header),
+            Span::styled(": close  ", self.theme.dimmed),
+            Span::styled("/", self.theme.header),
+            Span::styled(": edit filter", self.theme.dimmed),
+        ]);
+        frame.render_widget(Paragraph::new(hint), layout[0]);
+
+        let header = Row::new(vec![
+            Cell::from(Span::styled("DN", self.theme.header)),
+            Cell::from(Span::styled("sAMAccountName", self.theme.header)),
+            Cell::from(Span::styled("Display Name", self.theme.header)),
+            Cell::from(Span::styled("Mail", self.theme.header)),
+        ]);
+
+        let rows: Vec<Row> = self
+            .results
+            .iter()
+            .map(|entry| {
+                Row::new(vec![
+                    Cell::from(Span::styled(&entry.dn, self.theme.normal)),
+                    Cell::from(Span::styled(
+                        entry.first_value("sAMAccountName").unwrap_or(""),
+                        self.theme.normal,
+                    )),
+                    Cell::from(Span::styled(
+                        entry.first_value("displayName").unwrap_or(""),
+                        self.theme.normal,
+                    )),
+                    Cell::from(Span::styled(
+                        entry.first_value("mail").unwrap_or(""),
+                        self.theme.normal,
+                    )),
+                ])
+            })
+            .collect();
+
+        let widths = [
+            Constraint::Percentage(40),
+            Constraint::Percentage(15),
+            Constraint::Percentage(20),
+            Constraint::Percentage(25),
+        ];
+
+        let table = Table::new(rows, widths)
+            .header(header.style(self.theme.header))
+            .highlight_style(self.theme.selected.add_modifier(Modifier::BOLD));
+
+        frame.render_stateful_widget(table, layout[1], &mut self.table_state.clone());
     }
 
     pub fn render(&self, frame: &mut Frame, full: Rect) {

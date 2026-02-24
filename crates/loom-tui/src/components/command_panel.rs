@@ -85,7 +85,7 @@ pub struct CommandPanel {
     live_search_enabled: bool,
 
     // Cursor position within input_buffer
-    cursor_pos: usize,
+    pub cursor_pos: usize,
 
     // Schema for value suggestions
     schema: Option<SchemaCache>,
@@ -183,6 +183,24 @@ impl CommandPanel {
         self.live_searching = false;
         self.hide_completions();
         self.clear_preview();
+    }
+
+    /// Deactivate input but preserve the buffer so the filter text remains
+    /// visible and editable on resume.
+    pub fn soft_deactivate(&mut self) {
+        self.input_active = false;
+        self.completion_visible = false;
+        self.live_searching = false;
+        self.preview_results.clear();
+        self.preview_label.clear();
+        // Keep input_buffer, cursor_pos, search state intact
+    }
+
+    /// Reactivate input with existing buffer content.
+    pub fn resume_input(&mut self) {
+        self.input_active = true;
+        self.cursor_pos = self.input_buffer.len();
+        self.update_completions();
     }
 
     /// Set the attribute names available for autocomplete.
@@ -546,16 +564,15 @@ impl CommandPanel {
         match key.code {
             KeyCode::Enter => {
                 let query = normalize_filter(&self.input_buffer);
-                self.deactivate_input();
+                self.soft_deactivate();
                 if query.is_empty() {
                     Action::None
                 } else {
-                    self.push_message(format!("Search: {}", query));
                     Action::SearchExecute(query)
                 }
             }
             KeyCode::Esc => {
-                self.deactivate_input();
+                self.soft_deactivate();
                 Action::None
             }
             KeyCode::Backspace => {
@@ -754,7 +771,7 @@ impl CommandPanel {
         }
     }
 
-    fn format_input_for_display(&self) -> (Vec<String>, usize, usize, Vec<(usize, usize)>) {
+    pub fn format_input_for_display(&self) -> (Vec<String>, usize, usize, Vec<(usize, usize)>) {
         let buf = &self.input_buffer;
 
         // Check if buffer contains boolean operators
@@ -1048,6 +1065,106 @@ impl CommandPanel {
             .header(header.style(self.theme.header));
 
         frame.render_widget(table, inner);
+    }
+}
+
+impl CommandPanel {
+    /// Render just the input field and completions popup (no messages, no border).
+    /// Used inside the search popup.
+    pub fn render_input_only(&self, frame: &mut Frame, area: Rect) {
+        // Calculate input height: multi-line for compound filters, 1 otherwise
+        let (formatted_lines, cursor_row, cursor_col, _) = if self.input_active {
+            self.format_input_for_display()
+        } else {
+            (vec![self.input_buffer.clone()], 0, self.input_buffer.len(), Vec::new())
+        };
+
+        if self.input_active {
+            if formatted_lines.len() <= 1 {
+                // Single-line rendering
+                let before_cursor = &self.input_buffer[..self.cursor_pos];
+                let at_cursor = if self.cursor_pos < self.input_buffer.len() {
+                    &self.input_buffer[self.cursor_pos..self.cursor_pos + 1]
+                } else {
+                    "_"
+                };
+                let after_cursor = if self.cursor_pos < self.input_buffer.len() {
+                    &self.input_buffer[self.cursor_pos + 1..]
+                } else {
+                    ""
+                };
+
+                let mut spans = vec![
+                    Span::styled("/ ", self.theme.command_prompt),
+                    Span::styled(before_cursor.to_string(), self.theme.normal),
+                    Span::styled(at_cursor.to_string(), self.theme.command_prompt),
+                ];
+                if !after_cursor.is_empty() {
+                    spans.push(Span::styled(after_cursor.to_string(), self.theme.normal));
+                }
+                if self.live_searching {
+                    spans.push(Span::styled(" ...", self.theme.dimmed));
+                }
+                let input_line = Line::from(spans);
+                frame.render_widget(Paragraph::new(input_line), area);
+            } else {
+                // Multi-line rendering for compound filters
+                let display_lines: Vec<Line> = formatted_lines
+                    .iter()
+                    .enumerate()
+                    .map(|(row_idx, line_text)| {
+                        let prefix = if row_idx == 0 { "/ " } else { "  " };
+
+                        if row_idx == cursor_row {
+                            let before = &line_text[..cursor_col.min(line_text.len())];
+                            let at = if cursor_col < line_text.len() {
+                                &line_text[cursor_col..cursor_col + 1]
+                            } else {
+                                "_"
+                            };
+                            let after = if cursor_col < line_text.len() {
+                                &line_text[cursor_col + 1..]
+                            } else {
+                                ""
+                            };
+
+                            let mut spans = vec![
+                                Span::styled(prefix, self.theme.command_prompt),
+                                Span::styled(before.to_string(), self.theme.normal),
+                                Span::styled(at.to_string(), self.theme.command_prompt),
+                            ];
+                            if !after.is_empty() {
+                                spans.push(Span::styled(after.to_string(), self.theme.normal));
+                            }
+                            Line::from(spans)
+                        } else {
+                            Line::from(vec![
+                                Span::styled(prefix, self.theme.command_prompt),
+                                Span::styled(line_text.clone(), self.theme.normal),
+                            ])
+                        }
+                    })
+                    .collect();
+                frame.render_widget(Paragraph::new(display_lines), area);
+            }
+        } else {
+            // Not active — show filter text as dimmed, or hint
+            if self.input_buffer.is_empty() {
+                let hint = Line::from(Span::styled("Press / to edit filter", self.theme.dimmed));
+                frame.render_widget(Paragraph::new(hint), area);
+            } else {
+                let line = Line::from(vec![
+                    Span::styled("/ ", self.theme.command_prompt),
+                    Span::styled(&self.input_buffer, self.theme.dimmed),
+                ]);
+                frame.render_widget(Paragraph::new(line), area);
+            }
+        }
+
+        // Render autocomplete popup above the input area
+        if self.input_active {
+            self.render_completion_popup(frame, area);
+        }
     }
 }
 

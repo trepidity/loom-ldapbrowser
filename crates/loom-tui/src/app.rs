@@ -2,8 +2,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossterm::event::MouseEventKind;
+use crossterm::event::{KeyCode, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use tokio::sync::Mutex;
 use tracing::{debug, error};
 
@@ -53,8 +55,6 @@ use crate::tui;
 enum DragTarget {
     /// Vertical divider between left and right panels.
     Tree,
-    /// Horizontal divider between top panels and command panel.
-    Detail,
 }
 
 /// Backend for a connection tab — either live LDAP or offline/example.
@@ -91,6 +91,9 @@ pub struct App {
 
     // Keymap
     keymap: Keymap,
+
+    // Theme (for popup rendering)
+    theme: Theme,
 
     // UI components
     layout_bar: LayoutBar,
@@ -130,15 +133,13 @@ pub struct App {
     // Track areas for mouse hit-testing
     tree_area: Option<Rect>,
     detail_area: Option<Rect>,
-    command_area: Option<Rect>,
     tab_area: Option<Rect>,
     layout_bar_area: Option<Rect>,
     conn_tree_area: Option<Rect>,
     conn_form_area: Option<Rect>,
 
     // Resizable panel splits (percentages, 10..=90)
-    tree_split_pct: u16,   // left panel width as % of content area
-    detail_split_pct: u16, // top panels height as % of content area
+    tree_split_pct: u16, // left panel width as % of content area
     drag_target: Option<DragTarget>,
 
     // Async communication
@@ -152,6 +153,8 @@ impl App {
         let keymap = Keymap::from_config(&config.keybindings);
         let status_bar = StatusBar::new(theme.clone(), &keymap);
         let (action_tx, action_rx) = tokio::sync::mpsc::unbounded_channel();
+        let autocomplete_enabled = config.general.autocomplete;
+        let live_search_enabled = config.general.live_search;
 
         Self {
             config,
@@ -161,11 +164,16 @@ impl App {
             tabs: Vec::new(),
             active_tab_id: None,
             keymap,
+            theme: theme.clone(),
             layout_bar: LayoutBar::new(theme.clone()),
             tab_bar: TabBar::new(theme.clone()),
             tree_panel: TreePanel::new(theme.clone()),
             detail_panel: DetailPanel::new(theme.clone()),
-            command_panel: CommandPanel::new(theme.clone()),
+            command_panel: CommandPanel::new(
+                theme.clone(),
+                autocomplete_enabled,
+                live_search_enabled,
+            ),
             status_bar,
             focus: FocusManager::new(),
             connections_tree: ConnectionsTree::new(theme.clone()),
@@ -190,13 +198,11 @@ impl App {
             last_adhoc_profile: None,
             tree_area: None,
             detail_area: None,
-            command_area: None,
             tab_area: None,
             layout_bar_area: None,
             conn_tree_area: None,
             conn_form_area: None,
             tree_split_pct: 25,
-            detail_split_pct: 75,
             drag_target: None,
             action_tx,
             action_rx,
@@ -238,7 +244,7 @@ impl App {
                 }
             }
         } else {
-            self.command_panel.push_message(format!(
+            self.status_bar.set_message(format!(
                 "No profiles configured. Press {} or add profiles to ~/.config/loom-ldapbrowser/config.toml",
                 self.keymap.hint("show_connect_dialog"),
             ));
@@ -317,6 +323,16 @@ impl App {
         let (server_type_str, subschema_dn) = match conn.read_root_dse().await {
             Ok(root_dse) => {
                 let st = root_dse.server_type.to_string();
+                debug!(
+                    "RootDSE: server_type={}, subschema_subentry={:?}, naming_contexts={:?}, vendor={:?}",
+                    st,
+                    root_dse.subschema_subentry,
+                    root_dse.naming_contexts,
+                    root_dse.vendor_name,
+                );
+                // Log all raw RootDSE attribute keys for troubleshooting
+                let raw_keys: Vec<&String> = root_dse.raw.keys().collect();
+                debug!("RootDSE raw attribute keys: {:?}", raw_keys);
                 self.command_panel
                     .push_message(format!("Server type: {}", st));
                 (st, root_dse.subschema_subentry)
@@ -326,6 +342,7 @@ impl App {
                 ("LDAP".to_string(), None)
             }
         };
+        debug!("connect_with_password: subschema_dn={:?}", subschema_dn);
 
         let conn_id = self.allocate_conn_id();
         let base_dn = conn.base_dn.clone();
@@ -334,7 +351,7 @@ impl App {
 
         let read_only = profile.read_only;
         let ro_suffix = if read_only { " (read-only)" } else { "" };
-        self.command_panel.push_message(format!(
+        self.status_bar.set_message(format!(
             "Connected to {} (base: {}){}",
             host, base_dn, ro_suffix
         ));
@@ -581,27 +598,51 @@ impl App {
             match &tab.backend {
                 TabBackend::Offline(dir) => {
                     let schema = dir.schema().clone();
+                    debug!(
+                        "spawn_load_schema: offline dir, {} attr types, {} obj classes",
+                        schema.attribute_types.len(),
+                        schema.object_classes.len()
+                    );
                     let _ = tx.send(Action::SchemaLoaded(conn_id, Box::new(schema)));
                 }
                 TabBackend::Live(connection) => {
                     let connection = connection.clone();
                     let subschema_dn = tab.subschema_dn.clone();
+                    debug!(
+                        "spawn_load_schema: conn_id={}, subschema_dn={:?}",
+                        conn_id, subschema_dn
+                    );
                     tokio::spawn(async move {
                         let mut conn = connection.lock().await;
                         match conn.load_schema(subschema_dn.as_deref()).await {
                             Ok(schema) => {
+                                debug!(
+                                    "spawn_load_schema: success, {} attr types, {} obj classes",
+                                    schema.attribute_types.len(),
+                                    schema.object_classes.len()
+                                );
                                 let _ = tx.send(Action::SchemaLoaded(conn_id, Box::new(schema)));
                             }
                             Err(e) => {
+                                debug!(
+                                    "spawn_load_schema: all schema DNs failed for conn_id={}: {}",
+                                    conn_id, e
+                                );
                                 let _ = tx.send(Action::ErrorMessage(format!(
-                                    "Failed to load schema: {}",
+                                    "Failed to load schema: {} (using common attributes)",
                                     e
                                 )));
+                                let _ = tx.send(Action::SchemaLoaded(
+                                    conn_id,
+                                    Box::new(loom_core::schema::SchemaCache::new()),
+                                ));
                             }
                         }
                     });
                 }
             }
+        } else {
+            debug!("spawn_load_schema: no tab found for conn_id={}", conn_id);
         }
     }
 
@@ -898,6 +939,57 @@ impl App {
         }
     }
 
+    fn spawn_live_search(&self, conn_id: ConnectionId, generation: u64, filter: String) {
+        let tab = self.tabs.iter().find(|t| t.id == conn_id);
+        if let Some(tab) = tab {
+            let base_dn = tab.directory_tree.root_dn.clone();
+            let tx = self.action_tx.clone();
+
+            match &tab.backend {
+                TabBackend::Offline(dir) => {
+                    let mut entries = dir.search(&base_dn, &filter);
+                    entries.truncate(50);
+                    let _ = tx.send(Action::LiveSearchResults {
+                        generation,
+                        entries,
+                    });
+                }
+                TabBackend::Live(connection) => {
+                    let connection = connection.clone();
+                    tokio::spawn(async move {
+                        let mut conn = connection.lock().await;
+                        let result = match conn
+                            .search_limited(&base_dn, &filter, &["*"], 50)
+                            .await
+                        {
+                            Ok(entries) => Ok(entries),
+                            Err(e) if LdapConnection::is_connection_error(&e) => {
+                                if conn.reconnect().await.is_ok() {
+                                    conn.search_limited(&base_dn, &filter, &["*"], 50).await
+                                } else {
+                                    Err(e)
+                                }
+                            }
+                            Err(e) => Err(e),
+                        };
+
+                        match result {
+                            Ok(entries) => {
+                                let _ = tx.send(Action::LiveSearchResults {
+                                    generation,
+                                    entries,
+                                });
+                            }
+                            Err(e) => {
+                                debug!("Live search failed: {}", e);
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    }
+
     fn spawn_add_multiple_values(
         &self,
         conn_id: ConnectionId,
@@ -1009,6 +1101,7 @@ impl App {
         self.new_connection_dialog.hide();
         self.credential_prompt.hide();
         self.search_dialog.hide();
+        self.command_panel.soft_deactivate();
         self.attribute_editor.hide();
         self.attribute_picker.hide();
         self.export_dialog.hide();
@@ -1045,7 +1138,6 @@ impl App {
                                 Action::SearchFocusInput
                             ) {
                             self.dismiss_all_popups();
-                            self.command_panel.deactivate_input();
                             if self.active_layout != ActiveLayout::Browser {
                                 let _ = self
                                     .action_tx
@@ -1068,13 +1160,50 @@ impl App {
                         } else if self.credential_prompt.visible {
                             self.credential_prompt.handle_key_event(key)
                         } else if self.search_dialog.visible {
-                            let a = self.search_dialog.handle_key_event(key);
-                            if matches!(&a, Action::TreeSelect(_)) {
-                                let _ = self
-                                    .action_tx
-                                    .send(Action::FocusPanel(FocusTarget::DetailPanel));
+                            // Search popup is open — route keys based on input state
+                            if matches!(
+                                self.keymap.resolve_global_only(&key),
+                                Action::SearchFocusInput
+                            ) {
+                                // F9 toggles popup closed
+                                self.search_dialog.hide();
+                                self.command_panel.soft_deactivate();
+                                Action::None
+                            } else if self.command_panel.input_active {
+                                // Input is active — route to command panel
+                                self.command_panel.handle_input_key(key)
+                            } else {
+                                // Input not active — navigate results or edit filter
+                                match key.code {
+                                    KeyCode::Char('/') => {
+                                        // Reactivate input editing
+                                        self.command_panel.resume_input();
+                                        Action::None
+                                    }
+                                    KeyCode::Up
+                                    | KeyCode::Down
+                                    | KeyCode::Enter
+                                    | KeyCode::Esc
+                                    | KeyCode::Char('j')
+                                    | KeyCode::Char('k')
+                                    | KeyCode::Char('q') => {
+                                        let a = self.search_dialog.handle_key_event(key);
+                                        if matches!(&a, Action::TreeSelect(_)) {
+                                            self.command_panel.soft_deactivate();
+                                            let _ = self
+                                                .action_tx
+                                                .send(Action::FocusPanel(FocusTarget::DetailPanel));
+                                        }
+                                        a
+                                    }
+                                    KeyCode::Char(c) if !c.is_control() => {
+                                        // Start editing with this character
+                                        self.command_panel.resume_input();
+                                        self.command_panel.handle_input_key(key)
+                                    }
+                                    _ => Action::None,
+                                }
                             }
-                            a
                         } else if self.export_dialog.visible {
                             self.export_dialog.handle_key_event(key)
                         } else if self.bulk_update_dialog.visible {
@@ -1121,19 +1250,27 @@ impl App {
                                 panel_action
                             }
                         } else {
-                            // Browser layout: try panel-specific handler first, fall back to global keymap
-                            let panel_action = match self.focus.current() {
-                                FocusTarget::TreePanel => self.tree_panel.handle_key_event(key),
-                                FocusTarget::DetailPanel => self.detail_panel.handle_key_event(key),
-                                FocusTarget::CommandPanel => {
-                                    self.command_panel.handle_input_key(key)
-                                }
-                                _ => Action::None,
-                            };
-                            if matches!(panel_action, Action::None) {
-                                self.keymap.resolve(key, self.focus.current())
+                            // Browser layout: intercept '/' to open search popup
+                            if matches!(key.code, KeyCode::Char('/'))
+                                && !self.any_popup_or_input_active()
+                            {
+                                Action::SearchFocusInput
                             } else {
-                                panel_action
+                                // Try panel-specific handler first, fall back to global keymap
+                                let panel_action = match self.focus.current() {
+                                    FocusTarget::TreePanel => {
+                                        self.tree_panel.handle_key_event(key)
+                                    }
+                                    FocusTarget::DetailPanel => {
+                                        self.detail_panel.handle_key_event(key)
+                                    }
+                                    _ => Action::None,
+                                };
+                                if matches!(panel_action, Action::None) {
+                                    self.keymap.resolve(key, self.focus.current())
+                                } else {
+                                    panel_action
+                                }
                             }
                         };
                         let _ = self.action_tx.send(action);
@@ -1222,11 +1359,6 @@ impl App {
                         return Action::FocusPanel(FocusTarget::DetailPanel);
                     }
                 }
-                if let Some(cmd) = self.command_area {
-                    if cmd.intersects(pos) {
-                        return Action::FocusPanel(FocusTarget::CommandPanel);
-                    }
-                }
                 Action::None
             }
             MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
@@ -1302,15 +1434,6 @@ impl App {
                         return Some(DragTarget::Tree);
                     }
                 }
-                // Horizontal divider: bottom edge of top panels (tree/detail)
-                if let (Some(tree), Some(detail)) = (self.tree_area, self.detail_area) {
-                    let divider_row = detail.y + detail.height;
-                    let left = tree.x;
-                    let right = detail.x + detail.width;
-                    if row.abs_diff(divider_row) <= 1 && col >= left && col < right {
-                        return Some(DragTarget::Detail);
-                    }
-                }
             }
             ActiveLayout::Profiles => {
                 // Vertical divider: right edge of profiles tree
@@ -1320,24 +1443,13 @@ impl App {
                         return Some(DragTarget::Tree);
                     }
                 }
-                // Horizontal divider: bottom edge of top panels
-                if let (Some(ct), Some(_)) = (self.conn_tree_area, self.command_area) {
-                    let divider_row = ct.y + ct.height;
-                    let cf_right = self
-                        .conn_form_area
-                        .map(|cf| cf.x + cf.width)
-                        .unwrap_or(ct.x + ct.width);
-                    if row.abs_diff(divider_row) <= 1 && col >= ct.x && col < cf_right {
-                        return Some(DragTarget::Detail);
-                    }
-                }
             }
         }
         None
     }
 
     /// Update split percentages based on the current drag position.
-    fn apply_drag(&mut self, target: DragTarget, col: u16, row: u16) {
+    fn apply_drag(&mut self, target: DragTarget, col: u16, _row: u16) {
         // We need a reference area to compute the percentage from pixel position.
         match target {
             DragTarget::Tree => {
@@ -1349,17 +1461,6 @@ impl App {
                     let offset = col.saturating_sub(tree.x) as u32;
                     let pct = ((offset * 100) / total_w) as u16;
                     self.tree_split_pct = pct.clamp(10, 90);
-                }
-            }
-            DragTarget::Detail => {
-                if let (Some(tree), Some(cmd)) = (self.tree_area, self.command_area) {
-                    let total_h = (tree.height + cmd.height) as u32;
-                    if total_h == 0 {
-                        return;
-                    }
-                    let offset = row.saturating_sub(tree.y) as u32;
-                    let pct = ((offset * 100) / total_h) as u16;
-                    self.detail_split_pct = pct.clamp(10, 90);
                 }
             }
         }
@@ -1438,7 +1539,7 @@ impl App {
                 match self.connect_with_password(&profile, &password).await {
                     Ok(()) => {
                         self.last_adhoc_profile = Some(profile_clone);
-                        self.command_panel.push_message(format!(
+                        self.status_bar.set_message(format!(
                             "Tip: Press {} to save this connection to config",
                             self.keymap.hint("save_connection"),
                         ));
@@ -1461,7 +1562,7 @@ impl App {
                 let profile_clone = profile.clone();
                 match self.connect_with_password(&profile, &password).await {
                     Ok(()) => {
-                        self.command_panel.push_message(format!(
+                        self.status_bar.set_message(format!(
                             "Authenticated as {}",
                             profile.bind_dn.as_deref().unwrap_or("anonymous")
                         ));
@@ -1481,7 +1582,7 @@ impl App {
                 if let Some(profile) = self.last_adhoc_profile.take() {
                     match AppConfig::append_connection(&profile) {
                         Ok(()) => {
-                            self.command_panel.push_message(format!(
+                            self.status_bar.set_message(format!(
                                 "Saved connection '{}' to config",
                                 profile.name
                             ));
@@ -1528,7 +1629,7 @@ impl App {
                         self.command_panel
                             .push_error(format!("Failed to save config: {}", e));
                     } else {
-                        self.command_panel.push_message("Profile saved".to_string());
+                        self.status_bar.set_message("Profile saved".to_string());
                     }
                     if let Some(updated) = self.config.connections.get(idx) {
                         self.connection_form.view_profile(idx, updated);
@@ -1682,7 +1783,7 @@ impl App {
             Action::TreeChildrenLoaded(conn_id, parent_dn, nodes) => {
                 if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == conn_id) {
                     tab.directory_tree.insert_children(&parent_dn, nodes);
-                    self.command_panel.push_message(format!(
+                    self.status_bar.set_message(format!(
                         "Loaded children of {}",
                         loom_core::dn::rdn_display_name(&parent_dn)
                     ));
@@ -1702,36 +1803,59 @@ impl App {
             // Search
             Action::SearchExecute(filter) => {
                 if let Err(e) = loom_core::filter::validate_filter(&filter) {
-                    self.command_panel
-                        .push_error(format!("Invalid filter: {}", e));
-                    self.command_panel.activate_input();
+                    self.status_bar
+                        .set_error(format!("Invalid filter: {}", e));
+                    // Re-activate input so user can fix the filter
+                    self.command_panel.resume_input();
                     self.command_panel.input_buffer = filter;
+                    self.command_panel.cursor_pos = self.command_panel.input_buffer.len();
                 } else if let Some(id) = self.active_tab_id {
-                    self.command_panel
-                        .push_message(format!("Searching: {}...", filter));
+                    self.status_bar
+                        .set_message(format!("Searching: {}...", filter));
+                    self.search_dialog.filter = filter.clone();
                     self.spawn_search(id, filter);
                 } else {
-                    self.command_panel
-                        .push_error("No active connection".to_string());
+                    self.status_bar
+                        .set_error("No active connection".to_string());
                 }
             }
             Action::SearchResults(conn_id, entries) => {
                 if self.active_tab_id == Some(conn_id) {
                     let count = entries.len();
-                    self.command_panel
-                        .push_message(format!("Found {} entries", count));
-                    if entries.is_empty() {
-                        self.command_panel
-                            .push_message("No results found.".to_string());
-                    } else {
-                        self.search_dialog
-                            .show_results("search".to_string(), entries);
-                    }
+                    self.status_bar
+                        .set_message(format!("Found {} entries", count));
+                    // Store results in search dialog (keep popup visible)
+                    let filter = self.search_dialog.filter.clone();
+                    self.search_dialog.show_results(filter, entries);
                 }
             }
             Action::SearchFocusInput => {
-                self.focus.set(FocusTarget::CommandPanel);
-                self.command_panel.activate_input();
+                self.dismiss_all_popups();
+                self.search_dialog.visible = true;
+                if self.command_panel.input_buffer.is_empty() {
+                    self.command_panel.activate_input();
+                } else {
+                    self.command_panel.resume_input();
+                }
+            }
+
+            // Live Search (debounced preview)
+            Action::LiveSearchRequest { generation, filter } => {
+                if let Some(id) = self.active_tab_id {
+                    self.spawn_live_search(id, generation, filter);
+                }
+            }
+            Action::LiveSearchResults {
+                generation,
+                entries,
+            } => {
+                if self.command_panel.receive_live_results(generation) {
+                    // Feed live results directly into the search dialog table
+                    let filter = self.command_panel.input_buffer.clone();
+                    self.search_dialog.filter = filter;
+                    self.search_dialog.results = entries;
+                    self.search_dialog.reset_selection();
+                }
             }
 
             // Attribute editing
@@ -1805,7 +1929,7 @@ impl App {
                 }
             }
             Action::AttributeSaved(dn) => {
-                self.command_panel.push_message(format!(
+                self.status_bar.set_message(format!(
                     "Saved changes to {}",
                     loom_core::dn::rdn_display_name(&dn)
                 ));
@@ -1842,7 +1966,7 @@ impl App {
                 }
             }
             Action::ExportComplete(msg) => {
-                self.command_panel.push_message(msg);
+                self.status_bar.set_message(msg);
             }
 
             // Bulk Update
@@ -1888,7 +2012,7 @@ impl App {
                 }
             }
             Action::BulkUpdateComplete(msg) => {
-                self.command_panel.push_message(msg);
+                self.status_bar.set_message(msg);
             }
 
             // Create / Delete Entry
@@ -1908,7 +2032,7 @@ impl App {
                 }
             }
             Action::EntryCreated(dn) => {
-                self.command_panel.push_message(format!(
+                self.status_bar.set_message(format!(
                     "Created entry: {}",
                     loom_core::dn::rdn_display_name(&dn)
                 ));
@@ -1927,7 +2051,7 @@ impl App {
                 }
             }
             Action::EntryDeleted(dn) => {
-                self.command_panel.push_message(format!(
+                self.status_bar.set_message(format!(
                     "Deleted entry: {}",
                     loom_core::dn::rdn_display_name(&dn)
                 ));
@@ -1972,23 +2096,49 @@ impl App {
                 }
             }
             Action::SchemaLoaded(conn_id, schema) => {
+                debug!(
+                    "SchemaLoaded: conn_id={}, attr_types={}, obj_classes={}, active_tab={:?}",
+                    conn_id,
+                    schema.attribute_types.len(),
+                    schema.object_classes.len(),
+                    self.active_tab_id,
+                );
                 // Only show schema viewer if it was already visible (user triggered ShowSchemaViewer)
                 let viewer_was_open = self.schema_viewer.visible;
+                let schema_empty = schema.attribute_types.is_empty();
                 if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == conn_id) {
-                    self.command_panel.push_message(format!(
-                        "Schema loaded: {} attribute types, {} object classes",
-                        schema.attribute_types.len(),
-                        schema.object_classes.len()
-                    ));
+                    if !schema_empty {
+                        self.status_bar.set_message(format!(
+                            "Schema loaded: {} attribute types, {} object classes",
+                            schema.attribute_types.len(),
+                            schema.object_classes.len()
+                        ));
+                    } else {
+                        debug!("SchemaLoaded: schema is empty for conn_id={}, will use fallback attributes", conn_id);
+                    }
                     tab.schema = Some(*schema.clone());
-                    if viewer_was_open {
+                    if viewer_was_open && !schema_empty {
                         self.schema_viewer.show(&schema);
                     }
+                } else {
+                    debug!("SchemaLoaded: no tab found for conn_id={}", conn_id);
                 }
                 // Update command panel autocomplete if this is the active tab
                 if self.active_tab_id == Some(conn_id) {
-                    let names = schema.all_attribute_names();
-                    self.command_panel.set_attribute_names(names);
+                    if schema_empty {
+                        debug!("SchemaLoaded: calling set_fallback_attributes for conn_id={}", conn_id);
+                        self.command_panel.set_fallback_attributes();
+                    } else {
+                        let names = schema.all_attribute_names();
+                        debug!("SchemaLoaded: setting {} attribute names from schema for conn_id={}", names.len(), conn_id);
+                        self.command_panel.set_attribute_names(names);
+                    }
+                    self.command_panel.set_schema(Some(*schema.clone()));
+                } else {
+                    debug!(
+                        "SchemaLoaded: conn_id={} is not active tab ({:?}), skipping command panel update",
+                        conn_id, self.active_tab_id
+                    );
                 }
             }
 
@@ -2015,6 +2165,7 @@ impl App {
                 self.new_connection_dialog.hide();
                 self.credential_prompt.hide();
                 self.search_dialog.hide();
+                self.command_panel.soft_deactivate();
                 self.attribute_editor.hide();
                 self.attribute_picker.hide();
                 self.export_dialog.hide();
@@ -2030,12 +2181,12 @@ impl App {
             // Status
             Action::StatusMessage(msg) => {
                 self.log_panel.push_info(msg.clone());
-                self.command_panel.push_message(msg);
+                self.status_bar.set_message(msg);
             }
             Action::ErrorMessage(msg) => {
                 error!("{}", msg);
                 self.log_panel.push_error(msg.clone());
-                self.command_panel.push_error(msg);
+                self.status_bar.set_error(msg);
             }
 
             // DN search
@@ -2068,6 +2219,13 @@ impl App {
                         .map(|t| t.directory_tree.root_dn.clone())
                         .unwrap_or_default();
                     let tick_action = self.attribute_editor.tick(&base_dn);
+                    if !matches!(tick_action, Action::None) {
+                        let _ = self.action_tx.send(tick_action);
+                    }
+                }
+                // Dispatch tick to command panel for debounced live search
+                if self.command_panel.input_active {
+                    let tick_action = self.command_panel.tick();
                     if !matches!(tick_action, Action::None) {
                         let _ = self.action_tx.send(tick_action);
                     }
@@ -2128,8 +2286,10 @@ impl App {
             if let Some(schema) = &tab.schema {
                 self.command_panel
                     .set_attribute_names(schema.all_attribute_names());
+                self.command_panel.set_schema(Some(schema.clone()));
             } else {
                 self.command_panel.set_attribute_names(vec![]);
+                self.command_panel.set_schema(None);
             }
         }
     }
@@ -2163,24 +2323,13 @@ impl App {
             ActiveLayout::Browser => {
                 self.tab_area = Some(layout_bar_area);
 
-                // Vertical: top panels | command panel (draggable split)
-                let dp = self.detail_split_pct;
-                let browser_vertical = Layout::vertical([
-                    Constraint::Percentage(dp),
-                    Constraint::Percentage(100 - dp),
-                ])
-                .split(content_area);
-
-                let panels_area = browser_vertical[0];
-                let command_area = browser_vertical[1];
-
-                // Horizontal: tree | detail (draggable split)
+                // Horizontal: tree | detail (full content area, no command panel)
                 let tp = self.tree_split_pct;
                 let horizontal = Layout::horizontal([
                     Constraint::Percentage(tp),
                     Constraint::Percentage(100 - tp),
                 ])
-                .split(panels_area);
+                .split(content_area);
 
                 let tree_area = horizontal[0];
                 let detail_area = horizontal[1];
@@ -2188,7 +2337,6 @@ impl App {
                 // Store areas for mouse hit-testing
                 self.tree_area = Some(tree_area);
                 self.detail_area = Some(detail_area);
-                self.command_area = Some(command_area);
 
                 // Render tree panel
                 let tree_focused = self.focus.is_focused(FocusTarget::TreePanel);
@@ -2205,44 +2353,27 @@ impl App {
                     self.tree_panel.render_empty(frame, tree_area, tree_focused);
                 }
 
-                // Render detail and command panels
+                // Render detail panel
                 self.detail_panel.render(
                     frame,
                     detail_area,
                     self.focus.is_focused(FocusTarget::DetailPanel),
                 );
-                self.command_panel.render(
-                    frame,
-                    command_area,
-                    self.focus.is_focused(FocusTarget::CommandPanel),
-                );
             }
             ActiveLayout::Profiles => {
-                // Vertical: top panels | command panel (draggable split)
-                let dp = self.detail_split_pct;
-                let profiles_vertical = Layout::vertical([
-                    Constraint::Percentage(dp),
-                    Constraint::Percentage(100 - dp),
-                ])
-                .split(content_area);
-
-                let panels_area = profiles_vertical[0];
-                let command_area = profiles_vertical[1];
-
-                // Horizontal: profiles tree | connection form (draggable split)
+                // Horizontal: profiles tree | connection form (full content area)
                 let tp = self.tree_split_pct;
                 let horizontal = Layout::horizontal([
                     Constraint::Percentage(tp),
                     Constraint::Percentage(100 - tp),
                 ])
-                .split(panels_area);
+                .split(content_area);
 
                 let conn_tree_area = horizontal[0];
                 let conn_form_area = horizontal[1];
 
                 self.conn_tree_area = Some(conn_tree_area);
                 self.conn_form_area = Some(conn_form_area);
-                self.command_area = Some(command_area);
 
                 // Build active connections info
                 let active_conns: Vec<ActiveConnInfo> = self
@@ -2274,13 +2405,6 @@ impl App {
                     conn_form_area,
                     self.focus.is_focused(FocusTarget::ConnectionForm),
                 );
-
-                // Render command panel
-                self.command_panel.render(
-                    frame,
-                    command_area,
-                    self.focus.is_focused(FocusTarget::CommandPanel),
-                );
             }
         }
 
@@ -2301,7 +2425,56 @@ impl App {
             self.credential_prompt.render(frame, full);
         }
         if self.search_dialog.visible {
-            self.search_dialog.render(frame, full);
+            // Composite search popup: results + input in one overlay
+            let popup_width = (full.width as u32 * 90 / 100) as u16;
+            let popup_height = (full.height as u32 * 80 / 100).min(50) as u16;
+            let x = full.x + (full.width.saturating_sub(popup_width)) / 2;
+            let y = full.y + (full.height.saturating_sub(popup_height)) / 2;
+            let popup_area = Rect::new(x, y, popup_width, popup_height);
+
+            frame.render_widget(Clear, popup_area);
+
+            let title = format!(
+                " Search: {} ({} results) ",
+                self.search_dialog.filter,
+                self.search_dialog.results.len()
+            );
+            let block = Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(self.theme.popup_border)
+                .title_style(self.theme.popup_title);
+            let inner = block.inner(popup_area);
+            frame.render_widget(block, popup_area);
+
+            // Split inner: results (top) | separator (1 line) | input (bottom)
+            let (formatted_lines, _, _, _) = if self.command_panel.input_active {
+                self.command_panel.format_input_for_display()
+            } else {
+                (vec![String::new()], 0, 0, Vec::new())
+            };
+            let input_height = if self.command_panel.input_active {
+                (formatted_lines.len() as u16).max(1).min(8)
+            } else {
+                1
+            };
+            let layout = Layout::vertical([
+                Constraint::Min(5),
+                Constraint::Length(1),
+                Constraint::Length(input_height),
+            ])
+            .split(inner);
+
+            self.search_dialog.render_results(frame, layout[0]);
+
+            // Separator line
+            let sep = Line::from(Span::styled(
+                "\u{2500}".repeat(layout[1].width as usize),
+                self.theme.popup_border,
+            ));
+            frame.render_widget(Paragraph::new(sep), layout[1]);
+
+            self.command_panel.render_input_only(frame, layout[2]);
         }
         if self.attribute_editor.visible {
             self.attribute_editor.render(frame, full);
