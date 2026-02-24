@@ -623,6 +623,14 @@ impl CommandPanel {
                 }
                 Action::None
             }
+            KeyCode::Up => {
+                self.move_cursor_vertical(-1);
+                Action::None
+            }
+            KeyCode::Down => {
+                self.move_cursor_vertical(1);
+                Action::None
+            }
             KeyCode::Home => {
                 self.cursor_pos = 0;
                 Action::None
@@ -706,13 +714,53 @@ impl CommandPanel {
     /// Returns `(formatted_lines, cursor_row, cursor_col)`.
     /// For simple filters, returns a single line with direct cursor mapping.
     /// For compound filters (`(&`, `(|`, `(!`), formats across multiple indented lines.
-    fn format_input_for_display(&self) -> (Vec<String>, usize, usize) {
+    fn move_cursor_vertical(&mut self, delta: i32) {
+        let (lines, cursor_row, cursor_col, cursor_map) = self.format_input_for_display();
+
+        if lines.len() <= 1 {
+            return;
+        }
+
+        let target_row =
+            (cursor_row as i32 + delta).clamp(0, (lines.len() - 1) as i32) as usize;
+        if target_row == cursor_row {
+            return;
+        }
+
+        // Collect all (buf_idx, col) pairs on the target row
+        let candidates: Vec<(usize, usize)> = cursor_map
+            .iter()
+            .enumerate()
+            .filter(|&(_, &(row, _))| row == target_row)
+            .map(|(buf_idx, &(_, col))| (buf_idx, col))
+            .collect();
+
+        if candidates.is_empty() {
+            return;
+        }
+
+        // Find the candidate with the closest column to cursor_col
+        let &(best_idx, _) = candidates
+            .iter()
+            .min_by_key(|&&(_, col)| (col as i32 - cursor_col as i32).unsigned_abs())
+            .unwrap();
+
+        // If cursor_col is beyond the last char on the target row, position after it
+        let &(last_idx, last_col) = candidates.last().unwrap();
+        if cursor_col > last_col {
+            self.cursor_pos = last_idx + 1;
+        } else {
+            self.cursor_pos = best_idx;
+        }
+    }
+
+    fn format_input_for_display(&self) -> (Vec<String>, usize, usize, Vec<(usize, usize)>) {
         let buf = &self.input_buffer;
 
         // Check if buffer contains boolean operators
         let has_boolean = buf.contains("(&") || buf.contains("(|") || buf.contains("(!");
         if !has_boolean {
-            return (vec![buf.clone()], 0, self.cursor_pos);
+            return (vec![buf.clone()], 0, self.cursor_pos, Vec::new());
         }
 
         // Build formatted lines and a cursor_map: Vec<(row, col)> for each buffer index
@@ -803,7 +851,7 @@ impl CommandPanel {
 
         // If lines is empty, return a single empty line
         if lines.is_empty() {
-            return (vec![String::new()], 0, 0);
+            return (vec![String::new()], 0, 0, cursor_map);
         }
 
         // Map cursor position to (row, col) in formatted output
@@ -816,7 +864,7 @@ impl CommandPanel {
             (0, 0)
         };
 
-        (lines, cursor_row, cursor_col)
+        (lines, cursor_row, cursor_col, cursor_map)
     }
 
     /// Render as a read-only status log with a custom title.
@@ -1023,10 +1071,10 @@ impl Component for CommandPanel {
         frame.render_widget(block, area);
 
         // Calculate input height: multi-line for compound filters, 1 otherwise
-        let (formatted_lines, cursor_row, cursor_col) = if self.input_active {
+        let (formatted_lines, cursor_row, cursor_col, _) = if self.input_active {
             self.format_input_for_display()
         } else {
-            (vec![String::new()], 0, 0)
+            (vec![String::new()], 0, 0, Vec::new())
         };
         let input_height = (formatted_lines.len() as u16).max(1).min(8);
 
