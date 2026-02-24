@@ -1832,7 +1832,10 @@ impl App {
             Action::SearchFocusInput => {
                 self.dismiss_all_popups();
                 self.search_dialog.visible = true;
-                if self.command_panel.input_buffer.is_empty() {
+                if self.search_dialog.has_results() {
+                    // Results exist — open in navigation mode (press / to edit filter)
+                    self.command_panel.soft_deactivate();
+                } else if self.command_panel.input_buffer.is_empty() {
                     self.command_panel.activate_input();
                 } else {
                     self.command_panel.resume_input();
