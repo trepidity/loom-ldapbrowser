@@ -481,9 +481,9 @@ mod tests {
     }
 
     #[test]
-    fn test_default_ctrl_t_connect() {
+    fn test_default_f2_connect() {
         let km = Keymap::default();
-        let action = km.resolve(ctrl(KeyCode::Char('t')), FocusTarget::TreePanel);
+        let action = km.resolve(key(KeyCode::F(2)), FocusTarget::TreePanel);
         assert!(matches!(action, Action::ShowConnectDialog));
     }
 
@@ -606,7 +606,7 @@ mod tests {
     fn test_hint_returns_display_string() {
         let km = Keymap::default();
         assert_eq!(km.hint("quit"), "C-q");
-        assert_eq!(km.hint("show_connect_dialog"), "C-t");
+        assert_eq!(km.hint("show_connect_dialog"), "F2");
         assert_eq!(km.hint("switch_to_profiles"), "F1");
         assert_eq!(km.hint("search"), "F9");
         assert_eq!(km.hint("save_connection"), "F10");
