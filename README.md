@@ -4,6 +4,8 @@ A terminal-based LDAP browser built with Rust.
 
 Browse, search, edit, and manage LDAP directories from the comfort of your terminal.
 
+![Browser view](docs/screenshots/browser.png)
+
 ## Features
 
 - Tree browser with vim-style navigation
@@ -20,6 +22,8 @@ Browse, search, edit, and manage LDAP directories from the comfort of your termi
 - 5 built-in themes: dark, light, solarized, nord, matrix
 - Mouse support and context menus
 - Offline demo mode
+
+![Profiles view](docs/screenshots/profiles.png)
 
 ## Installation
 
@@ -45,7 +49,7 @@ loom-ldapbrowser -H ldap.example.com -D "cn=admin,dc=example,dc=com" -b "dc=exam
 loom-ldapbrowser
 ```
 
-Press `Ctrl+T` to open the connection dialog. Press `F5` or `?` for help.
+Press `F2` to open the connection dialog. Press `F5` or `?` for help.
 
 ## Configuration
 

@@ -65,20 +65,22 @@ loom-ldapbrowser -H ldap.example.com -D "cn=admin,dc=example,dc=com" -b "dc=exam
 loom-ldapbrowser
 ```
 
-On first launch with no configuration, press `Ctrl+T` to open the connection dialog. Press `F5` or `?` at any time for the built-in help overlay.
+On first launch with no configuration, press `F2` to open the connection dialog. Press `F5` or `?` at any time for the built-in help overlay.
 
 ---
 
 ## Layouts
 
-loom-ldapbrowser has two layouts, toggled with `F1` and `F2`:
+loom-ldapbrowser has two layouts. Connections and profiles are unified in a single tab bar with vim-style navigation:
 
-- **Browser** (`F1`) -- The main working view with the directory tree, detail panel, and command bar.
-- **Profiles** (`F2`) -- Manage saved connection profiles organized into folders.
+- **Browser** -- The main working view with the directory tree, detail panel, and command bar. This is the default layout.
+- **Profiles** (`F1`) -- Manage saved connection profiles organized into folders.
 
 ---
 
 ## Browser Layout
+
+![Browser layout](docs/screenshots/browser.png)
 
 The browser layout consists of four panels:
 
@@ -106,6 +108,8 @@ Shows the current connection info, detected server type, and key hints.
 
 ## Profiles Layout
 
+![Profiles layout](docs/screenshots/profiles.png)
+
 The profiles layout has two panels:
 
 ### Profiles Tree
@@ -123,8 +127,8 @@ When a profile is selected, shows all connection fields with options to edit, co
 There are several ways to connect:
 
 1. **CLI arguments** -- Pass `-H`, `-D`, and `-b` flags to connect on startup.
-2. **Connection dialog** (`Ctrl+T`) -- Select from saved profiles or create a new connection.
-3. **Profiles layout** (`F2`) -- Browse saved profiles, press `c` to connect.
+2. **Connection dialog** (`F2`) -- Select from saved profiles or create a new connection.
+3. **Profiles layout** (`F1`) -- Browse saved profiles, press `c` to connect.
 4. **Config file** -- The first profile in `config.toml` connects automatically on startup.
 
 When a profile uses `credential_method = "prompt"`, loom-ldapbrowser will prompt for the bind password. You can also set the `LOOM_PASSWORD` environment variable to skip the prompt.
@@ -142,6 +146,8 @@ After connecting, the tree panel shows the directory starting from the base DN.
 ---
 
 ## Searching
+
+![Search results](docs/screenshots/search-results.png)
 
 Press `F9` or `/` to focus the search input. Type an LDAP filter and press `Enter`.
 
@@ -202,6 +208,8 @@ Press `Enter` to execute. Results are reported in the status bar.
 
 ### Export
 
+![Export dialog](docs/screenshots/export-dialog.png)
+
 Press `F4` to open the export dialog. Configure:
 
 - **Search filter** -- Which entries to export
@@ -225,6 +233,8 @@ Import files through the profiles layout or programmatically. Supported formats:
 ---
 
 ## Schema Viewer
+
+![Schema viewer](docs/screenshots/schema-viewer.png)
 
 Press `F6` to open the schema viewer. It has two tabs:
 
@@ -291,7 +301,7 @@ quit = "Ctrl+q"
 force_quit = "Ctrl+c"
 focus_next = "Tab"
 focus_prev = "Shift+Tab"
-show_connect_dialog = "Ctrl+t"
+show_connect_dialog = "F2"
 search = "F9"
 show_export_dialog = "F4"
 show_bulk_update = "F8"
@@ -299,8 +309,10 @@ show_schema_viewer = "F6"
 show_help = "F5"
 toggle_log_panel = "F7"
 save_connection = "F10"
-switch_to_browser = "F1"
-switch_to_profiles = "F2"
+switch_to_profiles = "F1"
+next_tab = "Ctrl+Right"
+prev_tab = "Ctrl+Left"
+close_tab = "Ctrl+w"
 
 [[connections]]
 name = "Production"
@@ -360,10 +372,9 @@ All global keybindings are configurable via the `[keybindings]` section. Overrid
 
 | Default Key | Action |
 |-------------|--------|
-| `F1` | Browser layout |
-| `F2` | Profiles layout |
+| `F1` | Profiles |
+| `F2` | Connection dialog |
 | `F3` | About |
-| `Ctrl+T` | Connection dialog |
 | `F4` | Export dialog |
 | `F5` / `?` | Help |
 | `F6` | Schema viewer |
@@ -373,6 +384,9 @@ All global keybindings are configurable via the `[keybindings]` section. Overrid
 | `F10` | Save connection |
 | `Tab` | Focus next panel |
 | `Shift+Tab` | Focus previous panel |
+| `Ctrl+Right` / `gt` | Next tab |
+| `Ctrl+Left` / `gT` | Previous tab |
+| `Ctrl+W` | Close tab |
 | `Ctrl+Q` | Quit |
 | `Ctrl+C` | Force quit |
 
@@ -414,6 +428,7 @@ All global keybindings are configurable via the `[keybindings]` section. Overrid
 | `d` / `Delete` | Delete profile |
 | `x` | Export profiles |
 | `i` | Import profiles |
+| `Space` | Context menu |
 
 ### Connection Form
 
@@ -432,6 +447,8 @@ All global keybindings are configurable via the `[keybindings]` section. Overrid
 | Key | Action |
 |-----|--------|
 | `j` / `k` / arrows | Navigate results |
+| `PageUp` / `PageDown` | Jump 10 results |
+| `Home` / `End` | Jump to first / last |
 | `Enter` | Go to selected entry |
 | `Esc` / `q` | Close |
 
@@ -483,6 +500,8 @@ All global keybindings are configurable via the `[keybindings]` section. Overrid
 ---
 
 ## Themes
+
+![Themes](docs/screenshots/themes.png)
 
 loom-ldapbrowser includes five built-in themes. Set the theme in `config.toml`:
 
@@ -556,6 +575,8 @@ offline = true
 ---
 
 ## Context Menus
+
+![Context menu](docs/screenshots/context-menu.png)
 
 Press `Space` on a tree node or detail attribute to open a context menu with relevant actions (edit, copy, create, delete, etc.). Mouse right-click also works.
 
