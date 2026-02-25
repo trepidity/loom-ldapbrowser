@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossterm::event::{KeyCode, MouseEventKind};
+use crossterm::event::{KeyCode, KeyModifiers, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
@@ -142,6 +142,9 @@ pub struct App {
     tree_split_pct: u16, // left panel width as % of content area
     drag_target: Option<DragTarget>,
 
+    // Vim-style 'g' prefix state for gt/gT tab switching
+    pending_g: bool,
+
     // Async communication
     action_tx: tokio::sync::mpsc::UnboundedSender<Action>,
     action_rx: tokio::sync::mpsc::UnboundedReceiver<Action>,
@@ -160,7 +163,7 @@ impl App {
             config,
             should_quit: false,
             next_conn_id: 0,
-            active_layout: ActiveLayout::Browser,
+            active_layout: ActiveLayout::Profiles,
             tabs: Vec::new(),
             active_tab_id: None,
             keymap,
@@ -204,6 +207,7 @@ impl App {
             conn_form_area: None,
             tree_split_pct: 25,
             drag_target: None,
+            pending_g: false,
             action_tx,
             action_rx,
         }
@@ -302,6 +306,9 @@ impl App {
         self.tab_bar
             .add_tab(conn_id, "Example Directory".to_string());
         self.active_tab_id = Some(conn_id);
+        self.active_layout = ActiveLayout::Browser;
+        self.layout_bar.active = ActiveLayout::Browser;
+        self.focus.set_layout(ActiveLayout::Browser);
         self.spawn_load_children(conn_id, base_dn);
         self.push_message("Connected to example directory (read-only)".to_string());
         self.status_bar
@@ -382,6 +389,9 @@ impl App {
         self.tabs.push(tab);
         self.tab_bar.add_tab(conn_id, label);
         self.active_tab_id = Some(conn_id);
+        self.active_layout = ActiveLayout::Browser;
+        self.layout_bar.active = ActiveLayout::Browser;
+        self.focus.set_layout(ActiveLayout::Browser);
 
         // Load root children
         self.spawn_load_children(conn_id, base_dn);
@@ -1137,9 +1147,22 @@ impl App {
             if let Some(app_event) = event::poll_event(tick_rate) {
                 match app_event {
                     AppEvent::Key(key) => {
+                        // Clear pending 'g' if a popup/input became active
+                        if self.pending_g && self.any_popup_or_input_active() {
+                            self.pending_g = false;
+                        }
+
                         // Search binding activates search from any non-input context,
                         // but yields to dialogs/popups/editors that capture keystrokes.
-                        let action = if !self.any_popup_or_input_active()
+                        let action = if self.pending_g {
+                            // Resolve vim-style gt/gT tab switching
+                            self.pending_g = false;
+                            match key.code {
+                                KeyCode::Char('t') => Action::NextTab,
+                                KeyCode::Char('T') => Action::PrevTab,
+                                _ => Action::None,
+                            }
+                        } else if !self.any_popup_or_input_active()
                             && matches!(
                                 self.keymap.resolve_global_only(&key),
                                 Action::SearchFocusInput
@@ -1280,7 +1303,16 @@ impl App {
                                 }
                             }
                         };
-                        let _ = self.action_tx.send(action);
+                        // Initiate vim 'g' prefix when g produces no action
+                        if matches!(action, Action::None)
+                            && matches!(key.code, KeyCode::Char('g'))
+                            && key.modifiers == KeyModifiers::NONE
+                            && !self.any_popup_or_input_active()
+                        {
+                            self.pending_g = true;
+                        } else {
+                            let _ = self.action_tx.send(action);
+                        }
                     }
                     AppEvent::Mouse(mouse) => {
                         let action = self.handle_mouse(mouse);
@@ -1328,15 +1360,17 @@ impl App {
 
                 let pos = Rect::new(mouse.column, mouse.row, 1, 1);
 
-                // Check layout bar clicks
+                // Check layout bar clicks (unified tab strip)
                 if let Some(bar) = self.layout_bar_area {
                     if bar.intersects(pos) {
-                        let mid = bar.x + bar.width / 2;
-                        return if mouse.column < mid {
-                            Action::SwitchLayout(ActiveLayout::Browser)
-                        } else {
-                            Action::SwitchLayout(ActiveLayout::Profiles)
-                        };
+                        for &(start, end, ref target) in &self.layout_bar.hit_regions {
+                            if mouse.column >= start && mouse.column < end {
+                                return match target {
+                                    None => Action::SwitchLayout(ActiveLayout::Profiles),
+                                    Some(id) => Action::SwitchTab(*id),
+                                };
+                            }
+                        }
                     }
                 }
 
@@ -1488,17 +1522,59 @@ impl App {
                 self.focus.set(target);
             }
 
-            // Tab management
+            // Tab management — cycle through Profiles → conn1 → conn2 → … → Profiles
             Action::NextTab => {
-                self.tab_bar.next_tab();
-                if let Some(id) = self.tab_bar.active_tab {
-                    self.switch_to_tab(id);
+                let tab_count = self.tab_bar.tabs.len();
+                if tab_count > 0 {
+                    if self.active_layout == ActiveLayout::Profiles {
+                        let first_id = self.tab_bar.tabs[0].id;
+                        self.switch_to_tab(first_id);
+                        self.active_layout = ActiveLayout::Browser;
+                        self.layout_bar.active = ActiveLayout::Browser;
+                        self.focus.set_layout(ActiveLayout::Browser);
+                    } else {
+                        let current_idx = self
+                            .tab_bar
+                            .tabs
+                            .iter()
+                            .position(|t| Some(t.id) == self.active_tab_id)
+                            .unwrap_or(0);
+                        if current_idx + 1 < tab_count {
+                            let next_id = self.tab_bar.tabs[current_idx + 1].id;
+                            self.switch_to_tab(next_id);
+                        } else {
+                            self.active_layout = ActiveLayout::Profiles;
+                            self.layout_bar.active = ActiveLayout::Profiles;
+                            self.focus.set_layout(ActiveLayout::Profiles);
+                        }
+                    }
                 }
             }
             Action::PrevTab => {
-                self.tab_bar.prev_tab();
-                if let Some(id) = self.tab_bar.active_tab {
-                    self.switch_to_tab(id);
+                let tab_count = self.tab_bar.tabs.len();
+                if tab_count > 0 {
+                    if self.active_layout == ActiveLayout::Profiles {
+                        let last_id = self.tab_bar.tabs[tab_count - 1].id;
+                        self.switch_to_tab(last_id);
+                        self.active_layout = ActiveLayout::Browser;
+                        self.layout_bar.active = ActiveLayout::Browser;
+                        self.focus.set_layout(ActiveLayout::Browser);
+                    } else {
+                        let current_idx = self
+                            .tab_bar
+                            .tabs
+                            .iter()
+                            .position(|t| Some(t.id) == self.active_tab_id)
+                            .unwrap_or(0);
+                        if current_idx > 0 {
+                            let prev_id = self.tab_bar.tabs[current_idx - 1].id;
+                            self.switch_to_tab(prev_id);
+                        } else {
+                            self.active_layout = ActiveLayout::Profiles;
+                            self.layout_bar.active = ActiveLayout::Profiles;
+                            self.focus.set_layout(ActiveLayout::Profiles);
+                        }
+                    }
                 }
             }
             Action::SwitchTab(id) => {
@@ -1751,6 +1827,9 @@ impl App {
                     self.detail_panel.clear();
                     if self.active_tab_id.is_none() {
                         self.status_bar.set_disconnected();
+                        self.active_layout = ActiveLayout::Profiles;
+                        self.layout_bar.active = ActiveLayout::Profiles;
+                        self.focus.set_layout(ActiveLayout::Profiles);
                     }
                 }
             }
@@ -1762,6 +1841,9 @@ impl App {
                     self.detail_panel.clear();
                     if self.active_tab_id.is_none() {
                         self.status_bar.set_disconnected();
+                        self.active_layout = ActiveLayout::Profiles;
+                        self.layout_bar.active = ActiveLayout::Profiles;
+                        self.focus.set_layout(ActiveLayout::Profiles);
                     }
                 }
             }

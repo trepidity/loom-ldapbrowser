@@ -7,69 +7,71 @@ use crate::action::{ActiveLayout, ConnectionId};
 use crate::components::tab_bar::TabEntry;
 use crate::theme::Theme;
 
-/// Top-level bar combining layout toggle and connection tabs in a single row.
+/// Unified tab bar: `[Profiles] | [conn1] conn2`
 ///
-/// Browser mode:  ` [Browser]  Profiles  │ [conn1] conn2`
-/// Profiles mode: ` Browser  [Profiles]`
+/// Profiles is always the first tab. Connection tabs follow after a separator.
 pub struct LayoutBar {
     pub active: ActiveLayout,
     theme: Theme,
+    /// Hit regions populated during render: (x_start, x_end_exclusive, target).
+    /// `None` = Profiles tab, `Some(id)` = connection tab.
+    pub hit_regions: Vec<(u16, u16, Option<ConnectionId>)>,
 }
 
 impl LayoutBar {
     pub fn new(theme: Theme) -> Self {
         Self {
-            active: ActiveLayout::Browser,
+            active: ActiveLayout::Profiles,
             theme,
+            hit_regions: Vec::new(),
         }
     }
 
     pub fn render(
-        &self,
+        &mut self,
         frame: &mut Frame,
         area: Rect,
         tabs: &[TabEntry],
         active_tab: Option<ConnectionId>,
     ) {
-        let browser_style = if self.active == ActiveLayout::Browser {
-            self.theme.tab_active
-        } else {
-            self.theme.tab_inactive
-        };
-        let conns_style = if self.active == ActiveLayout::Profiles {
+        self.hit_regions.clear();
+
+        let profiles_active = self.active == ActiveLayout::Profiles;
+        let profiles_style = if profiles_active {
             self.theme.tab_active
         } else {
             self.theme.tab_inactive
         };
 
         let mut spans = vec![Span::styled(" ", self.theme.status_bar)];
+        let mut x = area.x + 1; // after leading space
 
-        if self.active == ActiveLayout::Browser {
-            spans.push(Span::styled("[Browser]", browser_style));
+        // Profiles tab
+        let profiles_label = if profiles_active {
+            "[Profiles]"
         } else {
-            spans.push(Span::styled(" Browser ", browser_style));
-        }
+            " Profiles "
+        };
+        spans.push(Span::styled(profiles_label, profiles_style));
+        let profiles_end = x + profiles_label.len() as u16;
+        self.hit_regions.push((x, profiles_end, None));
+        x = profiles_end;
 
-        spans.push(Span::styled("  ", self.theme.status_bar));
-
-        if self.active == ActiveLayout::Profiles {
-            spans.push(Span::styled("[Profiles]", conns_style));
-        } else {
-            spans.push(Span::styled(" Profiles ", conns_style));
-        }
-
-        // In Browser mode, append connection tabs after a separator
-        if self.active == ActiveLayout::Browser && !tabs.is_empty() {
-            spans.push(Span::styled(" \u{2502} ", self.theme.dimmed)); // │ separator
+        // Connection tabs after separator
+        if !tabs.is_empty() {
+            spans.push(Span::styled(" \u{2502} ", self.theme.dimmed));
+            x += 3;
 
             for tab in tabs {
-                let is_active = active_tab == Some(tab.id);
+                let is_active =
+                    self.active == ActiveLayout::Browser && active_tab == Some(tab.id);
                 let style = if is_active {
                     self.theme.tab_active
                 } else {
                     self.theme.tab_inactive
                 };
 
+                let tab_start = x;
                 if is_active {
                     spans.push(Span::styled("[", style));
                     spans.push(Span::styled(&tab.label, style));
@@ -79,7 +81,11 @@ impl LayoutBar {
                     spans.push(Span::styled(&tab.label, style));
                     spans.push(Span::styled(" ", self.theme.status_bar));
                 }
+                x += tab.label.len() as u16 + 2;
+                self.hit_regions.push((tab_start, x, Some(tab.id)));
+
                 spans.push(Span::styled(" ", self.theme.status_bar));
+                x += 1;
             }
         }
 

@@ -20,8 +20,7 @@ pub struct StatusBar {
 impl StatusBar {
     pub fn new(theme: Theme, keymap: &Keymap) -> Self {
         let hints = format!(
-            "{}:browser {}:profiles {}:help F3:about {}:quit",
-            keymap.hint("switch_to_browser"),
+            "{}:profiles {}:help F3:about {}:quit",
             keymap.hint("switch_to_profiles"),
             keymap.hint("show_help"),
             keymap.hint("quit"),

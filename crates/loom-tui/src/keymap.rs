@@ -188,12 +188,6 @@ impl Keymap {
                 Action::SaveCurrentConnection,
             ),
             (
-                "switch_to_browser",
-                &config.switch_to_browser,
-                &defaults.switch_to_browser,
-                Action::SwitchLayout(ActiveLayout::Browser),
-            ),
-            (
                 "switch_to_profiles",
                 &config.switch_to_profiles,
                 &defaults.switch_to_profiles,
@@ -604,10 +598,6 @@ mod tests {
         ));
         assert!(matches!(
             km.resolve(key(KeyCode::F(1)), FocusTarget::TreePanel),
-            Action::SwitchLayout(ActiveLayout::Browser)
-        ));
-        assert!(matches!(
-            km.resolve(key(KeyCode::F(2)), FocusTarget::TreePanel),
             Action::SwitchLayout(ActiveLayout::Profiles)
         ));
     }
@@ -617,8 +607,7 @@ mod tests {
         let km = Keymap::default();
         assert_eq!(km.hint("quit"), "C-q");
         assert_eq!(km.hint("show_connect_dialog"), "C-t");
-        assert_eq!(km.hint("switch_to_browser"), "F1");
-        assert_eq!(km.hint("switch_to_profiles"), "F2");
+        assert_eq!(km.hint("switch_to_profiles"), "F1");
         assert_eq!(km.hint("search"), "F9");
         assert_eq!(km.hint("save_connection"), "F10");
         assert_eq!(km.hint("focus_next"), "Tab");

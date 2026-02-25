@@ -161,12 +161,8 @@ fn build_sections(keymap: &Keymap) -> Vec<HelpSection> {
             title: "GLOBAL SHORTCUTS (configurable)".to_string(),
             entries: vec![
                 (
-                    keymap.hint("switch_to_browser").to_string(),
-                    "Browser layout".to_string(),
-                ),
-                (
                     keymap.hint("switch_to_profiles").to_string(),
-                    "Profiles layout".to_string(),
+                    "Profiles".to_string(),
                 ),
                 (
                     keymap.hint("show_connect_dialog").to_string(),
@@ -210,11 +206,11 @@ fn build_sections(keymap: &Keymap) -> Vec<HelpSection> {
                     "Previous panel".to_string(),
                 ),
                 (
-                    keymap.hint("next_tab").to_string(),
+                    format!("{}/gt", keymap.hint("next_tab")),
                     "Next tab".to_string(),
                 ),
                 (
-                    keymap.hint("prev_tab").to_string(),
+                    format!("{}/gT", keymap.hint("prev_tab")),
                     "Previous tab".to_string(),
                 ),
                 (
@@ -505,7 +501,6 @@ mod tests {
         let keys: Vec<&str> = global.entries.iter().map(|(k, _)| k.as_str()).collect();
         // Check that F-key bindings are present
         assert!(keys.contains(&"F1"));
-        assert!(keys.contains(&"F2"));
         assert!(keys.contains(&"F4"));
         assert!(keys.contains(&"F5/?"));
         assert!(keys.contains(&"F6"));

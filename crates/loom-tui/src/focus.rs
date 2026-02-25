@@ -8,9 +8,9 @@ pub struct FocusManager {
 
 impl FocusManager {
     pub fn new() -> Self {
-        let panels = vec![FocusTarget::TreePanel, FocusTarget::DetailPanel];
+        let panels = vec![FocusTarget::ConnectionsTree, FocusTarget::ConnectionForm];
         Self {
-            current: FocusTarget::TreePanel,
+            current: FocusTarget::ConnectionsTree,
             panels,
         }
     }
@@ -74,29 +74,29 @@ mod tests {
     #[test]
     fn test_initial_focus() {
         let fm = FocusManager::new();
-        assert_eq!(fm.current(), FocusTarget::TreePanel);
+        assert_eq!(fm.current(), FocusTarget::ConnectionsTree);
     }
 
     #[test]
     fn test_focus_next_cycles() {
         let mut fm = FocusManager::new();
-        assert_eq!(fm.current(), FocusTarget::TreePanel);
+        assert_eq!(fm.current(), FocusTarget::ConnectionsTree);
 
         fm.next();
-        assert_eq!(fm.current(), FocusTarget::DetailPanel);
+        assert_eq!(fm.current(), FocusTarget::ConnectionForm);
 
         fm.next();
-        assert_eq!(fm.current(), FocusTarget::TreePanel); // wraps
+        assert_eq!(fm.current(), FocusTarget::ConnectionsTree); // wraps
     }
 
     #[test]
     fn test_focus_prev_cycles() {
         let mut fm = FocusManager::new();
         fm.prev();
-        assert_eq!(fm.current(), FocusTarget::DetailPanel); // wraps back
+        assert_eq!(fm.current(), FocusTarget::ConnectionForm); // wraps back
 
         fm.prev();
-        assert_eq!(fm.current(), FocusTarget::TreePanel);
+        assert_eq!(fm.current(), FocusTarget::ConnectionsTree);
     }
 
     #[test]

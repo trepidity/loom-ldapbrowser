@@ -89,7 +89,6 @@ pub struct KeybindingConfig {
     pub show_help: String,
     pub toggle_log_panel: String,
     pub save_connection: String,
-    pub switch_to_browser: String,
     pub switch_to_profiles: String,
     pub next_tab: String,
     pub prev_tab: String,
@@ -111,8 +110,7 @@ impl Default for KeybindingConfig {
             show_help: "F5".to_string(),
             toggle_log_panel: "F7".to_string(),
             save_connection: "F10".to_string(),
-            switch_to_browser: "F1".to_string(),
-            switch_to_profiles: "F2".to_string(),
+            switch_to_profiles: "F1".to_string(),
             next_tab: "Ctrl+Right".to_string(),
             prev_tab: "Ctrl+Left".to_string(),
             close_tab: "Ctrl+w".to_string(),
@@ -396,8 +394,7 @@ timeout_secs = 60
         assert_eq!(config.keybindings.show_connect_dialog, "Ctrl+t");
         assert_eq!(config.keybindings.search, "F9");
         assert_eq!(config.keybindings.save_connection, "F10");
-        assert_eq!(config.keybindings.switch_to_browser, "F1");
-        assert_eq!(config.keybindings.switch_to_profiles, "F2");
+        assert_eq!(config.keybindings.switch_to_profiles, "F1");
     }
 
     #[test]
@@ -406,13 +403,11 @@ timeout_secs = 60
 [keybindings]
 quit = "Alt+q"
 show_connect_dialog = "Alt+t"
-switch_to_browser = "F11"
 switch_to_profiles = "F12"
 "#;
         let config = AppConfig::from_toml(toml).unwrap();
         assert_eq!(config.keybindings.quit, "Alt+q");
         assert_eq!(config.keybindings.show_connect_dialog, "Alt+t");
-        assert_eq!(config.keybindings.switch_to_browser, "F11");
         assert_eq!(config.keybindings.switch_to_profiles, "F12");
         // Non-specified fields keep defaults
         assert_eq!(config.keybindings.force_quit, "Ctrl+c");
