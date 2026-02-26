@@ -2536,7 +2536,7 @@ impl App {
                 (vec![String::new()], 0, 0, Vec::new())
             };
             let input_height = if self.command_panel.input_active {
-                (formatted_lines.len() as u16).max(1).min(8)
+                (formatted_lines.len() as u16).clamp(1, 8)
             } else {
                 1
             };

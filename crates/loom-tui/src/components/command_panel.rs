@@ -437,8 +437,8 @@ impl CommandPanel {
                     let prefix_end = self.cursor_pos - partial.len();
                     let suffix = &self.input_buffer[self.cursor_pos..];
                     // Skip the auto-inserted ')' since we're adding our own
-                    let suffix = if suffix.starts_with(')') {
-                        suffix[1..].to_string()
+                    let suffix = if let Some(stripped) = suffix.strip_prefix(')') {
+                        stripped.to_string()
                     } else {
                         suffix.to_string()
                     };
@@ -854,11 +854,7 @@ impl CommandPanel {
                     current_line = String::new();
                 } else {
                     // Closing paren for a child filter — stays on same line
-                    let row = if current_line.is_empty() {
-                        lines.len()
-                    } else {
-                        lines.len()
-                    };
+                    let row = lines.len();
                     let col = current_line.len();
                     cursor_map.push((row, col));
                     current_line.push(ch);
@@ -1216,7 +1212,7 @@ impl Component for CommandPanel {
         } else {
             (vec![String::new()], 0, 0, Vec::new())
         };
-        let input_height = (formatted_lines.len() as u16).max(1).min(8);
+        let input_height = (formatted_lines.len() as u16).clamp(1, 8);
 
         // Layout: messages (flex) | input area (dynamic height)
         let layout =
