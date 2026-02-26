@@ -145,6 +145,9 @@ pub struct App {
     // Vim-style 'g' prefix state for gt/gT tab switching
     pending_g: bool,
 
+    // First-launch: after help popup closes, show the connect dialog
+    show_connect_after_help: bool,
+
     // Async communication
     action_tx: tokio::sync::mpsc::UnboundedSender<Action>,
     action_rx: tokio::sync::mpsc::UnboundedReceiver<Action>,
@@ -208,6 +211,7 @@ impl App {
             tree_split_pct: 25,
             drag_target: None,
             pending_g: false,
+            show_connect_after_help: false,
             action_tx,
             action_rx,
         }
@@ -242,7 +246,13 @@ impl App {
 
     /// Connect to the first configured connection profile.
     /// Auth errors are handled gracefully by showing a credential prompt.
+    /// On first launch (no config file), shows help first, then the connect dialog.
     pub async fn connect_first_profile(&mut self) {
+        if self.config.first_launch {
+            self.help_popup.show(&self.keymap);
+            self.show_connect_after_help = true;
+            return;
+        }
         if !self.config.connections.is_empty() {
             let profile = self.config.connections[0].clone();
             match self.connect_profile(&profile).await {
@@ -1244,7 +1254,12 @@ impl App {
                         } else if self.schema_viewer.visible {
                             self.schema_viewer.handle_key_event(key)
                         } else if self.help_popup.visible {
-                            self.help_popup.handle_key_event(key)
+                            let a = self.help_popup.handle_key_event(key);
+                            if matches!(a, Action::ClosePopup) && self.show_connect_after_help {
+                                self.show_connect_after_help = false;
+                                let _ = self.action_tx.send(Action::ShowConnectDialog);
+                            }
+                            a
                         } else if self.about_popup.visible {
                             self.about_popup.handle_key_event(key)
                         } else if self.log_panel.visible {

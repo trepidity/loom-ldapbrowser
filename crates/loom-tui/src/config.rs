@@ -137,6 +137,9 @@ pub struct AppConfig {
     pub connections: Vec<ConnectionProfile>,
     #[serde(default)]
     pub folders: Vec<FolderConfig>,
+    /// True when no config file was found on disk (first launch).
+    #[serde(skip)]
+    pub first_launch: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,7 +193,9 @@ impl AppConfig {
             }
         }
 
-        Self::default()
+        let mut config = Self::default();
+        config.first_launch = true;
+        config
     }
 
     /// Parse config from a TOML string.
