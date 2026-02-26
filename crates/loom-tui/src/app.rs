@@ -355,8 +355,7 @@ impl App {
         self.push_message(format!("Connecting to {}...", profile.host));
 
         let settings = profile.to_connection_settings();
-        let mut conn =
-            LdapConnection::connect(settings, Some(self.trust_store.clone())).await?;
+        let mut conn = LdapConnection::connect(settings, Some(self.trust_store.clone())).await?;
 
         // Bind with credential resolution
         if let Some(ref bind_dn) = profile.bind_dn {
@@ -1875,8 +1874,7 @@ impl App {
                 profile,
                 password,
             } => {
-                self.cert_trust_dialog
-                    .show(*cert_info, *profile, password);
+                self.cert_trust_dialog.show(*cert_info, *profile, password);
             }
             Action::TrustCertAndConnect {
                 cert_info,
@@ -1894,17 +1892,14 @@ impl App {
                     };
                     self.trust_store.trust_always(entry);
                     // Persist to config
-                    self.config.trusted_certificates =
-                        self.trust_store.to_config_entries();
+                    self.config.trusted_certificates = self.trust_store.to_config_entries();
                     if let Err(e) = self.config.save() {
                         self.push_error(format!("Failed to save config: {}", e));
                     }
                     self.push_message("Certificate trusted permanently".to_string());
                 } else {
                     self.trust_store.trust_session(fingerprint);
-                    self.push_message(
-                        "Certificate trusted for this session".to_string(),
-                    );
+                    self.push_message("Certificate trusted for this session".to_string());
                 }
                 // Retry the connection
                 match self.connect_with_password(&profile, &password).await {

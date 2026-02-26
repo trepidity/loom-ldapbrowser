@@ -5,7 +5,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::client::WebPkiServerVerifier;
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{ClientConfig, DigitallySignedStruct, Error as TlsError, RootCertStore, SignatureScheme};
+use rustls::{
+    ClientConfig, DigitallySignedStruct, Error as TlsError, RootCertStore, SignatureScheme,
+};
 use sha2::{Digest, Sha256};
 
 /// Information about a server certificate, extracted for display to the user.
@@ -107,30 +109,29 @@ pub fn sha256_fingerprint(der: &[u8]) -> String {
 pub fn parse_cert_info(der: &[u8], host: &str, port: u16) -> CertificateInfo {
     let fingerprint = sha256_fingerprint(der);
 
-    let (subject, issuer, not_before, not_after) =
-        match x509_parser::parse_x509_certificate(der) {
-            Ok((_, cert)) => {
-                let subject = cert.subject().to_string();
-                let issuer = cert.issuer().to_string();
-                let not_before = cert
-                    .validity()
-                    .not_before
-                    .to_rfc2822()
-                    .unwrap_or_else(|_| cert.validity().not_before.to_string());
-                let not_after = cert
-                    .validity()
-                    .not_after
-                    .to_rfc2822()
-                    .unwrap_or_else(|_| cert.validity().not_after.to_string());
-                (subject, issuer, not_before, not_after)
-            }
-            Err(_) => (
-                "Unknown".to_string(),
-                "Unknown".to_string(),
-                "Unknown".to_string(),
-                "Unknown".to_string(),
-            ),
-        };
+    let (subject, issuer, not_before, not_after) = match x509_parser::parse_x509_certificate(der) {
+        Ok((_, cert)) => {
+            let subject = cert.subject().to_string();
+            let issuer = cert.issuer().to_string();
+            let not_before = cert
+                .validity()
+                .not_before
+                .to_rfc2822()
+                .unwrap_or_else(|_| cert.validity().not_before.to_string());
+            let not_after = cert
+                .validity()
+                .not_after
+                .to_rfc2822()
+                .unwrap_or_else(|_| cert.validity().not_after.to_string());
+            (subject, issuer, not_before, not_after)
+        }
+        Err(_) => (
+            "Unknown".to_string(),
+            "Unknown".to_string(),
+            "Unknown".to_string(),
+            "Unknown".to_string(),
+        ),
+    };
 
     CertificateInfo {
         host: host.to_string(),

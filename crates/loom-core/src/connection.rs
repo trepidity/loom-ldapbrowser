@@ -94,12 +94,8 @@ impl LdapConnection {
 
         let ldap = match settings.tls_mode {
             TlsMode::Auto => Self::auto_connect(&settings, timeout, &trust_store).await?,
-            TlsMode::Ldaps => {
-                Self::connect_ldaps(&settings, timeout, &trust_store).await?
-            }
-            TlsMode::StartTls => {
-                Self::connect_starttls(&settings, timeout, &trust_store).await?
-            }
+            TlsMode::Ldaps => Self::connect_ldaps(&settings, timeout, &trust_store).await?,
+            TlsMode::StartTls => Self::connect_starttls(&settings, timeout, &trust_store).await?,
             TlsMode::None => Self::connect_plain(&settings, timeout).await?,
         };
 
@@ -171,7 +167,10 @@ impl LdapConnection {
         timeout: Duration,
         trust_store: &Option<Arc<TrustStore>>,
         starttls: bool,
-    ) -> (LdapConnSettings, Option<Arc<Mutex<Option<CertificateInfo>>>>) {
+    ) -> (
+        LdapConnSettings,
+        Option<Arc<Mutex<Option<CertificateInfo>>>>,
+    ) {
         let mut conn_settings = LdapConnSettings::new().set_conn_timeout(timeout);
         if starttls {
             conn_settings = conn_settings.set_starttls(true);

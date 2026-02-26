@@ -71,12 +71,8 @@ impl CertTrustDialog {
                 }
                 Action::None
             }
-            KeyCode::Char('a') | KeyCode::Char('A') => {
-                self.accept(true)
-            }
-            KeyCode::Char('s') | KeyCode::Char('S') => {
-                self.accept(false)
-            }
+            KeyCode::Char('a') | KeyCode::Char('A') => self.accept(true),
+            KeyCode::Char('s') | KeyCode::Char('S') => self.accept(false),
             KeyCode::Char('r') | KeyCode::Char('R') | KeyCode::Esc => {
                 self.hide();
                 Action::ClosePopup
@@ -148,8 +144,7 @@ impl CertTrustDialog {
         frame.render_widget(block, area);
 
         // Layout: message + cert details (flex) | buttons (1 line)
-        let layout =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
+        let layout = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
 
         // Build cert detail lines
         let host_port = format!("{}:{}", info.host, info.port);
@@ -157,10 +152,7 @@ impl CertTrustDialog {
 
         // Split fingerprint into two lines if it's long
         let (fp_line1, fp_line2) = if fingerprint.len() > 32 {
-            let mid = fingerprint[..32]
-                .rfind(':')
-                .map(|i| i + 1)
-                .unwrap_or(32);
+            let mid = fingerprint[..32].rfind(':').map(|i| i + 1).unwrap_or(32);
             (&fingerprint[..mid], Some(&fingerprint[mid..]))
         } else {
             (fingerprint.as_str(), None)
