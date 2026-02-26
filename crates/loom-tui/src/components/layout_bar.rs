@@ -63,8 +63,7 @@ impl LayoutBar {
             x += 3;
 
             for tab in tabs {
-                let is_active =
-                    self.active == ActiveLayout::Browser && active_tab == Some(tab.id);
+                let is_active = self.active == ActiveLayout::Browser && active_tab == Some(tab.id);
                 let style = if is_active {
                     self.theme.tab_active
                 } else {

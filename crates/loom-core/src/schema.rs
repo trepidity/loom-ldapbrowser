@@ -195,7 +195,12 @@ impl LdapConnection {
 
         let mut last_err = None;
         for (i, schema_dn) in dns_to_try.iter().enumerate() {
-            debug!("load_schema: attempt {}/{} — trying DN {:?}", i + 1, dns_to_try.len(), schema_dn);
+            debug!(
+                "load_schema: attempt {}/{} — trying DN {:?}",
+                i + 1,
+                dns_to_try.len(),
+                schema_dn
+            );
             match self.try_load_schema_from(schema_dn).await {
                 Ok(cache) if !cache.attribute_types.is_empty() => {
                     debug!(
@@ -220,13 +225,19 @@ impl LdapConnection {
             }
         }
 
-        debug!("load_schema: all {} DNs exhausted, returning error", dns_to_try.len());
+        debug!(
+            "load_schema: all {} DNs exhausted, returning error",
+            dns_to_try.len()
+        );
         Err(last_err.unwrap_or_else(|| CoreError::SchemaError("No schema found".into())))
     }
 
     /// Try to load schema from a specific DN.
     async fn try_load_schema_from(&mut self, schema_dn: &str) -> Result<SchemaCache, CoreError> {
-        debug!("try_load_schema_from: searching base={:?} scope=Base filter=(objectClass=*)", schema_dn);
+        debug!(
+            "try_load_schema_from: searching base={:?} scope=Base filter=(objectClass=*)",
+            schema_dn
+        );
         let result = self
             .ldap
             .search(
@@ -237,18 +248,26 @@ impl LdapConnection {
             )
             .await
             .map_err(|e| {
-                debug!("try_load_schema_from: LDAP search error for {:?}: {}", schema_dn, e);
+                debug!(
+                    "try_load_schema_from: LDAP search error for {:?}: {}",
+                    schema_dn, e
+                );
                 CoreError::Ldap(e)
             })?;
 
-        let (entries, _res) = result
-            .success()
-            .map_err(|e| {
-                debug!("try_load_schema_from: search result error for {:?}: {}", schema_dn, e);
-                CoreError::SchemaError(format!("Schema search failed: {}", e))
-            })?;
+        let (entries, _res) = result.success().map_err(|e| {
+            debug!(
+                "try_load_schema_from: search result error for {:?}: {}",
+                schema_dn, e
+            );
+            CoreError::SchemaError(format!("Schema search failed: {}", e))
+        })?;
 
-        debug!("try_load_schema_from: got {} entries from {:?}", entries.len(), schema_dn);
+        debug!(
+            "try_load_schema_from: got {} entries from {:?}",
+            entries.len(),
+            schema_dn
+        );
 
         let mut cache = SchemaCache::new();
 
@@ -264,7 +283,10 @@ impl LdapConnection {
 
             // Parse attributeTypes
             if let Some(attr_types) = find_values_ci(&attrs, "attributetypes") {
-                debug!("try_load_schema_from: found {} attributeTypes definitions", attr_types.len());
+                debug!(
+                    "try_load_schema_from: found {} attributeTypes definitions",
+                    attr_types.len()
+                );
                 let mut parsed_count = 0u32;
                 let mut failed_count = 0u32;
                 for def in attr_types {
@@ -291,12 +313,18 @@ impl LdapConnection {
                     parsed_count, failed_count
                 );
             } else {
-                debug!("try_load_schema_from: no 'attributeTypes' attribute found in entry from {:?}", schema_dn);
+                debug!(
+                    "try_load_schema_from: no 'attributeTypes' attribute found in entry from {:?}",
+                    schema_dn
+                );
             }
 
             // Parse objectClasses
             if let Some(obj_classes) = find_values_ci(&attrs, "objectclasses") {
-                debug!("try_load_schema_from: found {} objectClasses definitions", obj_classes.len());
+                debug!(
+                    "try_load_schema_from: found {} objectClasses definitions",
+                    obj_classes.len()
+                );
                 let mut parsed_count = 0u32;
                 let mut failed_count = 0u32;
                 for def in obj_classes {
@@ -318,7 +346,10 @@ impl LdapConnection {
                     parsed_count, failed_count
                 );
             } else {
-                debug!("try_load_schema_from: no 'objectClasses' attribute found in entry from {:?}", schema_dn);
+                debug!(
+                    "try_load_schema_from: no 'objectClasses' attribute found in entry from {:?}",
+                    schema_dn
+                );
             }
 
             debug!(

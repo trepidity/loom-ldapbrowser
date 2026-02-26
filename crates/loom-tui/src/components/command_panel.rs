@@ -1,7 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table};
+use ratatui::widgets::{
+    Block, BorderType, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table,
+};
 use ratatui::Frame;
 use tracing::debug;
 
@@ -273,7 +275,10 @@ impl CommandPanel {
         match context {
             Some(FilterContext::Empty) => {
                 // Show filter templates
-                debug!("update_completions: showing {} filter templates", FILTER_TEMPLATES.len());
+                debug!(
+                    "update_completions: showing {} filter templates",
+                    FILTER_TEMPLATES.len()
+                );
                 self.completion_kind = CompletionKind::Templates;
                 self.value_items = FILTER_TEMPLATES.iter().map(|s| s.to_string()).collect();
                 self.completions = self
@@ -306,7 +311,9 @@ impl CommandPanel {
                     self.attribute_names.len(),
                 );
                 if !self.completions.is_empty() {
-                    let top_matches: Vec<&str> = self.completions.iter()
+                    let top_matches: Vec<&str> = self
+                        .completions
+                        .iter()
                         .take(5)
                         .map(|m| self.attribute_names[m.index].as_str())
                         .collect();
@@ -360,7 +367,9 @@ impl CommandPanel {
                     }
                     debug!(
                         "update_completions: Value attr={:?}, partial={:?}, {} value completions",
-                        attr, partial, self.completions.len()
+                        attr,
+                        partial,
+                        self.completions.len()
                     );
                     self.completions.truncate(50);
                     self.completion_visible = !self.completions.is_empty();
@@ -378,7 +387,11 @@ impl CommandPanel {
 
     fn accept_completion(&mut self) {
         if !self.completion_visible || self.completions.is_empty() {
-            debug!("accept_completion: nothing to accept (visible={}, count={})", self.completion_visible, self.completions.len());
+            debug!(
+                "accept_completion: nothing to accept (visible={}, count={})",
+                self.completion_visible,
+                self.completions.len()
+            );
             return;
         }
 
@@ -407,7 +420,10 @@ impl CommandPanel {
                     self.input_buffer.push('=');
                     self.cursor_pos = self.input_buffer.len();
                     self.input_buffer.push_str(&suffix);
-                    debug!("accept_completion: buffer is now {:?}, cursor_pos={}", self.input_buffer, self.cursor_pos);
+                    debug!(
+                        "accept_completion: buffer is now {:?}, cursor_pos={}",
+                        self.input_buffer, self.cursor_pos
+                    );
                 }
             }
             CompletionKind::Values => {
@@ -431,7 +447,10 @@ impl CommandPanel {
                     self.input_buffer.push(')');
                     self.cursor_pos = self.input_buffer.len();
                     self.input_buffer.push_str(&suffix);
-                    debug!("accept_completion: buffer is now {:?}, cursor_pos={}", self.input_buffer, self.cursor_pos);
+                    debug!(
+                        "accept_completion: buffer is now {:?}, cursor_pos={}",
+                        self.input_buffer, self.cursor_pos
+                    );
                 }
             }
             CompletionKind::Templates => {
@@ -482,7 +501,8 @@ impl CommandPanel {
         } else {
             debug!(
                 "tick: filter {:?} invalid: {:?}",
-                self.input_buffer, validation.err()
+                self.input_buffer,
+                validation.err()
             );
             Action::None
         }
@@ -738,8 +758,7 @@ impl CommandPanel {
             return;
         }
 
-        let target_row =
-            (cursor_row as i32 + delta).clamp(0, (lines.len() - 1) as i32) as usize;
+        let target_row = (cursor_row as i32 + delta).clamp(0, (lines.len() - 1) as i32) as usize;
         if target_row == cursor_row {
             return;
         }
@@ -805,7 +824,7 @@ impl CommandPanel {
                 current_line = format!("{}{}{}", indent_str.repeat(indent), ch, chars[i + 1]);
                 let row = lines.len();
                 let col_base = indent * indent_str.len();
-                cursor_map.push((row, col_base));     // '('
+                cursor_map.push((row, col_base)); // '('
                 cursor_map.push((row, col_base + 1)); // '&'/'|'/'!'
                 lines.push(current_line);
                 current_line = String::new();
@@ -1061,8 +1080,7 @@ impl CommandPanel {
             Constraint::Percentage(25),
         ];
 
-        let table = Table::new(rows, widths)
-            .header(header.style(self.theme.header));
+        let table = Table::new(rows, widths).header(header.style(self.theme.header));
 
         frame.render_widget(table, inner);
     }
@@ -1076,7 +1094,12 @@ impl CommandPanel {
         let (formatted_lines, cursor_row, cursor_col, _) = if self.input_active {
             self.format_input_for_display()
         } else {
-            (vec![self.input_buffer.clone()], 0, self.input_buffer.len(), Vec::new())
+            (
+                vec![self.input_buffer.clone()],
+                0,
+                self.input_buffer.len(),
+                Vec::new(),
+            )
         };
 
         if self.input_active {
@@ -1277,10 +1300,7 @@ impl Component for CommandPanel {
                                 Span::styled(at.to_string(), self.theme.command_prompt),
                             ];
                             if !after.is_empty() {
-                                spans.push(Span::styled(
-                                    after.to_string(),
-                                    self.theme.normal,
-                                ));
+                                spans.push(Span::styled(after.to_string(), self.theme.normal));
                             }
                             Line::from(spans)
                         } else {

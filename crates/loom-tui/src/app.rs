@@ -363,10 +363,7 @@ impl App {
 
         let read_only = profile.read_only;
         let ro_suffix = if read_only { " (read-only)" } else { "" };
-        let conn_msg = format!(
-            "Connected to {} (base: {}){}",
-            host, base_dn, ro_suffix
-        );
+        let conn_msg = format!("Connected to {} (base: {}){}", host, base_dn, ro_suffix);
         self.status_bar.set_message(conn_msg.clone());
         self.log_panel.push_info(conn_msg);
         self.status_bar.set_connected(&host, &server_type_str);
@@ -975,9 +972,7 @@ impl App {
                     let connection = connection.clone();
                     tokio::spawn(async move {
                         let mut conn = connection.lock().await;
-                        let result = match conn
-                            .search_limited(&base_dn, &filter, &["*"], 50)
-                            .await
+                        let result = match conn.search_limited(&base_dn, &filter, &["*"], 50).await
                         {
                             Ok(entries) => Ok(entries),
                             Err(e) if LdapConnection::is_connection_error(&e) => {
@@ -1166,7 +1161,8 @@ impl App {
                             && matches!(
                                 self.keymap.resolve_global_only(&key),
                                 Action::SearchFocusInput
-                            ) {
+                            )
+                        {
                             self.dismiss_all_popups();
                             if self.active_layout != ActiveLayout::Browser {
                                 let _ = self
@@ -1288,9 +1284,7 @@ impl App {
                             } else {
                                 // Try panel-specific handler first, fall back to global keymap
                                 let panel_action = match self.focus.current() {
-                                    FocusTarget::TreePanel => {
-                                        self.tree_panel.handle_key_event(key)
-                                    }
+                                    FocusTarget::TreePanel => self.tree_panel.handle_key_event(key),
                                     FocusTarget::DetailPanel => {
                                         self.detail_panel.handle_key_event(key)
                                     }
@@ -1663,10 +1657,7 @@ impl App {
                 if let Some(profile) = self.last_adhoc_profile.take() {
                     match AppConfig::append_connection(&profile) {
                         Ok(()) => {
-                            let save_msg = format!(
-                                "Saved connection '{}' to config",
-                                profile.name
-                            );
+                            let save_msg = format!("Saved connection '{}' to config", profile.name);
                             self.status_bar.set_message(save_msg.clone());
                             self.log_panel.push_info(save_msg);
                             self.config.connections.push(profile);
@@ -1890,8 +1881,7 @@ impl App {
             // Search
             Action::SearchExecute(filter) => {
                 if let Err(e) = loom_core::filter::validate_filter(&filter) {
-                    self.status_bar
-                        .set_error(format!("Invalid filter: {}", e));
+                    self.status_bar.set_error(format!("Invalid filter: {}", e));
                     // Re-activate input so user can fix the filter
                     self.command_panel.resume_input();
                     self.command_panel.input_buffer = filter;
@@ -2019,10 +2009,8 @@ impl App {
                 }
             }
             Action::AttributeSaved(dn) => {
-                let saved_msg = format!(
-                    "Saved changes to {}",
-                    loom_core::dn::rdn_display_name(&dn)
-                );
+                let saved_msg =
+                    format!("Saved changes to {}", loom_core::dn::rdn_display_name(&dn));
                 self.status_bar.set_message(saved_msg.clone());
                 self.log_panel.push_info(saved_msg);
                 // Refresh the entry
@@ -2120,10 +2108,8 @@ impl App {
                 }
             }
             Action::EntryCreated(dn) => {
-                let created_msg = format!(
-                    "Created entry: {}",
-                    loom_core::dn::rdn_display_name(&dn)
-                );
+                let created_msg =
+                    format!("Created entry: {}", loom_core::dn::rdn_display_name(&dn));
                 self.status_bar.set_message(created_msg.clone());
                 self.log_panel.push_info(created_msg);
                 // Refresh parent's children in the tree
@@ -2140,10 +2126,8 @@ impl App {
                 }
             }
             Action::EntryDeleted(dn) => {
-                let deleted_msg = format!(
-                    "Deleted entry: {}",
-                    loom_core::dn::rdn_display_name(&dn)
-                );
+                let deleted_msg =
+                    format!("Deleted entry: {}", loom_core::dn::rdn_display_name(&dn));
                 self.status_bar.set_message(deleted_msg.clone());
                 self.log_panel.push_info(deleted_msg);
                 // Clear detail panel if showing the deleted entry
@@ -2217,11 +2201,18 @@ impl App {
                 // Update command panel autocomplete if this is the active tab
                 if self.active_tab_id == Some(conn_id) {
                     if schema_empty {
-                        debug!("SchemaLoaded: calling set_fallback_attributes for conn_id={}", conn_id);
+                        debug!(
+                            "SchemaLoaded: calling set_fallback_attributes for conn_id={}",
+                            conn_id
+                        );
                         self.command_panel.set_fallback_attributes();
                     } else {
                         let names = schema.all_attribute_names();
-                        debug!("SchemaLoaded: setting {} attribute names from schema for conn_id={}", names.len(), conn_id);
+                        debug!(
+                            "SchemaLoaded: setting {} attribute names from schema for conn_id={}",
+                            names.len(),
+                            conn_id
+                        );
                         self.command_panel.set_attribute_names(names);
                     }
                     self.command_panel.set_schema(Some(*schema.clone()));
