@@ -2,6 +2,7 @@ pub mod about_popup;
 pub mod attribute_editor;
 pub mod attribute_picker;
 pub mod bulk_update_dialog;
+pub mod cert_trust_dialog;
 pub mod command_panel;
 pub mod confirm_dialog;
 pub mod connect_dialog;

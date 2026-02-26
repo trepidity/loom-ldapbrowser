@@ -21,3 +21,7 @@ csv = { workspace = true }
 rust_xlsxwriter = { workspace = true }
 calamine = { workspace = true }
 keyring = { workspace = true }
+rustls = { workspace = true }
+rustls-native-certs = { workspace = true }
+sha2 = { workspace = true }
+x509-parser = { workspace = true }

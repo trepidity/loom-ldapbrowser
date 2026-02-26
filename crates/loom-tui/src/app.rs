@@ -12,8 +12,10 @@ use tracing::{debug, error};
 use loom_core::bulk::BulkMod;
 use loom_core::connection::LdapConnection;
 use loom_core::credentials::{CredentialMethod, CredentialProvider};
+use loom_core::error::CoreError;
 use loom_core::offline::OfflineDirectory;
 use loom_core::schema::{AttributeSyntax, SchemaCache};
+use loom_core::tls::{TrustStore, TrustedCertEntry};
 use loom_core::tree::{DirectoryTree, TreeNode};
 
 use crate::action::{Action, ActiveLayout, ConnectionId, ContextMenuSource, FocusTarget};
@@ -22,6 +24,7 @@ use crate::components::about_popup::AboutPopup;
 use crate::components::attribute_editor::{AttributeEditor, EditOp, EditResult};
 use crate::components::attribute_picker::AttributePicker;
 use crate::components::bulk_update_dialog::BulkUpdateDialog;
+use crate::components::cert_trust_dialog::CertTrustDialog;
 use crate::components::command_panel::CommandPanel;
 use crate::components::confirm_dialog::ConfirmDialog;
 use crate::components::connect_dialog::ConnectDialog;
@@ -82,6 +85,9 @@ pub struct App {
     should_quit: bool,
     next_conn_id: ConnectionId,
 
+    // Certificate trust
+    trust_store: Arc<TrustStore>,
+
     // Layout state
     active_layout: ActiveLayout,
 
@@ -111,6 +117,7 @@ pub struct App {
     // Popup/dialogs
     context_menu: ContextMenu,
     confirm_dialog: ConfirmDialog,
+    cert_trust_dialog: CertTrustDialog,
     connect_dialog: ConnectDialog,
     new_connection_dialog: NewConnectionDialog,
     credential_prompt: CredentialPromptDialog,
@@ -161,11 +168,13 @@ impl App {
         let (action_tx, action_rx) = tokio::sync::mpsc::unbounded_channel();
         let autocomplete_enabled = config.general.autocomplete;
         let live_search_enabled = config.general.live_search;
+        let trust_store = Arc::new(TrustStore::from_config(&config.trusted_certificates));
 
         Self {
             config,
             should_quit: false,
             next_conn_id: 0,
+            trust_store,
             active_layout: ActiveLayout::Profiles,
             tabs: Vec::new(),
             active_tab_id: None,
@@ -186,6 +195,7 @@ impl App {
             connection_form: ConnectionForm::new(theme.clone()),
             context_menu: ContextMenu::new(theme.clone()),
             confirm_dialog: ConfirmDialog::new(theme.clone()),
+            cert_trust_dialog: CertTrustDialog::new(theme.clone()),
             connect_dialog: ConnectDialog::new(theme.clone()),
             new_connection_dialog: NewConnectionDialog::new(theme.clone()),
             credential_prompt: CredentialPromptDialog::new(theme.clone()),
@@ -278,19 +288,31 @@ impl App {
             self.connect_offline();
             return Ok(());
         }
-        if profile.bind_dn.is_some() {
+        let password = if profile.bind_dn.is_some() {
             match resolve_password(profile) {
-                Ok(password) if !password.is_empty() => {
-                    self.connect_with_password(profile, &password).await
-                }
+                Ok(password) if !password.is_empty() => password,
                 _ => {
                     // No password available — need interactive prompt
                     self.credential_prompt.show(profile.clone());
-                    Ok(())
+                    return Ok(());
                 }
             }
         } else {
-            self.connect_with_password(profile, "").await
+            String::new()
+        };
+
+        match self.connect_with_password(profile, &password).await {
+            Ok(()) => Ok(()),
+            Err(e) if extract_cert_trust_error(&e).is_some() => {
+                let info = extract_cert_trust_error(&e).unwrap();
+                let _ = self.action_tx.send(Action::ShowCertTrustDialog {
+                    cert_info: Box::new(info),
+                    profile: Box::new(profile.clone()),
+                    password,
+                });
+                Ok(())
+            }
+            Err(e) => Err(e),
         }
     }
 
@@ -333,7 +355,8 @@ impl App {
         self.push_message(format!("Connecting to {}...", profile.host));
 
         let settings = profile.to_connection_settings();
-        let mut conn = LdapConnection::connect(settings).await?;
+        let mut conn =
+            LdapConnection::connect(settings, Some(self.trust_store.clone())).await?;
 
         // Bind with credential resolution
         if let Some(ref bind_dn) = profile.bind_dn {
@@ -1073,6 +1096,7 @@ impl App {
     fn popup_active(&self) -> bool {
         self.context_menu.visible
             || self.confirm_dialog.visible
+            || self.cert_trust_dialog.visible
             || self.connect_dialog.visible
             || self.new_connection_dialog.visible
             || self.credential_prompt.visible
@@ -1096,6 +1120,7 @@ impl App {
             || self.attribute_editor.visible
             || self.attribute_picker.visible
             || self.confirm_dialog.visible
+            || self.cert_trust_dialog.visible
             || self.connect_dialog.visible
             || self.new_connection_dialog.visible
             || self.credential_prompt.visible
@@ -1119,6 +1144,7 @@ impl App {
     fn dismiss_all_popups(&mut self) {
         self.context_menu.hide();
         self.confirm_dialog.hide();
+        self.cert_trust_dialog.hide();
         self.connect_dialog.hide();
         self.new_connection_dialog.hide();
         self.credential_prompt.hide();
@@ -1189,6 +1215,8 @@ impl App {
                             self.attribute_picker.handle_key_event(key)
                         } else if self.confirm_dialog.visible {
                             self.confirm_dialog.handle_key_event(key)
+                        } else if self.cert_trust_dialog.visible {
+                            self.cert_trust_dialog.handle_key_event(key)
                         } else if self.connect_dialog.visible {
                             self.connect_dialog.handle_key_event(key)
                         } else if self.new_connection_dialog.visible {
@@ -1636,6 +1664,14 @@ impl App {
                         self.status_bar.set_message(tip_msg.clone());
                         self.log_panel.push_info(tip_msg);
                     }
+                    Err(e) if extract_cert_trust_error(&e).is_some() => {
+                        let info = extract_cert_trust_error(&e).unwrap();
+                        let _ = self.action_tx.send(Action::ShowCertTrustDialog {
+                            cert_info: Box::new(info),
+                            profile: Box::new(profile_clone),
+                            password,
+                        });
+                    }
                     Err(e) if is_auth_error(&e) => {
                         self.push_error(format!("Authentication failed: {}", e));
                         self.credential_prompt.show(profile_clone);
@@ -1658,6 +1694,14 @@ impl App {
                         );
                         self.status_bar.set_message(auth_msg.clone());
                         self.log_panel.push_info(auth_msg);
+                    }
+                    Err(e) if extract_cert_trust_error(&e).is_some() => {
+                        let info = extract_cert_trust_error(&e).unwrap();
+                        let _ = self.action_tx.send(Action::ShowCertTrustDialog {
+                            cert_info: Box::new(info),
+                            profile: Box::new(profile_clone),
+                            password,
+                        });
                     }
                     Err(e) if is_auth_error(&e) => {
                         self.push_error(format!("Authentication failed: {}", e));
@@ -1823,6 +1867,56 @@ impl App {
                     self.push_message("Folder description saved".to_string());
                 }
                 self.connection_form.view_folder(&path, &description);
+            }
+
+            // Certificate Trust
+            Action::ShowCertTrustDialog {
+                cert_info,
+                profile,
+                password,
+            } => {
+                self.cert_trust_dialog
+                    .show(*cert_info, *profile, password);
+            }
+            Action::TrustCertAndConnect {
+                cert_info,
+                fingerprint,
+                always,
+                profile,
+                password,
+            } => {
+                if always {
+                    let entry = TrustedCertEntry {
+                        host: cert_info.host.clone(),
+                        port: cert_info.port,
+                        fingerprint_sha256: fingerprint.clone(),
+                        subject: cert_info.subject.clone(),
+                    };
+                    self.trust_store.trust_always(entry);
+                    // Persist to config
+                    self.config.trusted_certificates =
+                        self.trust_store.to_config_entries();
+                    if let Err(e) = self.config.save() {
+                        self.push_error(format!("Failed to save config: {}", e));
+                    }
+                    self.push_message("Certificate trusted permanently".to_string());
+                } else {
+                    self.trust_store.trust_session(fingerprint);
+                    self.push_message(
+                        "Certificate trusted for this session".to_string(),
+                    );
+                }
+                // Retry the connection
+                match self.connect_with_password(&profile, &password).await {
+                    Ok(()) => {}
+                    Err(e) if is_auth_error(&e) => {
+                        self.push_error(format!("Authentication failed: {}", e));
+                        self.credential_prompt.show(*profile);
+                    }
+                    Err(e) => {
+                        self.push_error(format!("Connection failed: {}", e));
+                    }
+                }
             }
 
             Action::CloseCurrentTab => {
@@ -2512,6 +2606,9 @@ impl App {
         if self.confirm_dialog.visible {
             self.confirm_dialog.render(frame, full);
         }
+        if self.cert_trust_dialog.visible {
+            self.cert_trust_dialog.render(frame, full);
+        }
         if self.connect_dialog.visible {
             self.connect_dialog.render(frame, full);
         }
@@ -2635,6 +2732,17 @@ fn is_auth_error(err: &anyhow::Error) -> bool {
         || msg.contains("rc=49")
         || msg.contains("invalid credentials")
         || msg.contains("password must be provided")
+}
+
+/// Extract CertificateInfo if the error is a certificate trust error.
+fn extract_cert_trust_error(err: &anyhow::Error) -> Option<loom_core::tls::CertificateInfo> {
+    err.downcast_ref::<CoreError>().and_then(|ce| {
+        if let CoreError::CertificateNotTrusted(info) = ce {
+            Some(info.as_ref().clone())
+        } else {
+            None
+        }
+    })
 }
 
 /// Return the built-in example directory profile.

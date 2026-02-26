@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use loom_core::connection::{ConnectionSettings, TlsMode};
 use loom_core::credentials::CredentialMethod;
+use loom_core::tls::TrustedCertEntry;
 
 /// A saved connection profile.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +138,8 @@ pub struct AppConfig {
     pub connections: Vec<ConnectionProfile>,
     #[serde(default)]
     pub folders: Vec<FolderConfig>,
+    #[serde(default)]
+    pub trusted_certificates: Vec<TrustedCertEntry>,
     /// True when no config file was found on disk (first launch).
     #[serde(skip)]
     pub first_launch: bool,

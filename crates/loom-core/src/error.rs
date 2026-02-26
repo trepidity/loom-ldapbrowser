@@ -1,9 +1,14 @@
 use thiserror::Error;
 
+use crate::tls::CertificateInfo;
+
 #[derive(Error, Debug)]
 pub enum CoreError {
     #[error("connection failed: {0}")]
     ConnectionFailed(String),
+
+    #[error("certificate not trusted for {}", .0.host)]
+    CertificateNotTrusted(Box<CertificateInfo>),
 
     #[error("bind failed: {0}")]
     BindFailed(String),

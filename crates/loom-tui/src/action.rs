@@ -1,10 +1,12 @@
-use crate::components::attribute_editor::EditResult;
-use crate::components::bulk_update_dialog::BulkOp;
-use crate::config::ConnectionProfile;
 use loom_core::entry::LdapEntry;
 use loom_core::schema::SchemaCache;
 use loom_core::server_detect::ServerType;
+use loom_core::tls::CertificateInfo;
 use loom_core::tree::TreeNode;
+
+use crate::components::attribute_editor::EditResult;
+use crate::components::bulk_update_dialog::BulkOp;
+use crate::config::ConnectionProfile;
 
 /// Unique identifier for a connection tab.
 pub type ConnectionId = usize;
@@ -180,6 +182,20 @@ pub enum Action {
     ConnMgrImportExecute(Vec<ConnectionProfile>), // commit selected imported profiles
     ConnMgrSelectFolder(String),                // folder path selected in tree
     ConnMgrSaveFolderDesc(String, String),      // (folder path, new description)
+
+    // Certificate Trust
+    ShowCertTrustDialog {
+        cert_info: Box<CertificateInfo>,
+        profile: Box<ConnectionProfile>,
+        password: String,
+    },
+    TrustCertAndConnect {
+        cert_info: Box<CertificateInfo>,
+        fingerprint: String,
+        always: bool,
+        profile: Box<ConnectionProfile>,
+        password: String,
+    },
 
     // Context Menu
     ShowContextMenu(ContextMenuSource),
