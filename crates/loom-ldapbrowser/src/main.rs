@@ -36,6 +36,10 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     let cli = Cli::parse();
 
     // Initialize logging to ./logs/ directory at debug level
