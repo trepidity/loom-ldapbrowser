@@ -81,7 +81,7 @@ pub struct ConnectionForm {
     theme: Theme,
     active_field: Field,
     /// Index of the profile being viewed/edited (None for Create mode)
-    profile_index: Option<usize>,
+    pub profile_index: Option<usize>,
 
     // Form fields (string buffers for editing)
     name: String,
@@ -364,6 +364,13 @@ impl ConnectionForm {
                         "Delete this connection profile?".to_string(),
                         Box::new(Action::ConnMgrDelete(idx)),
                     )
+                } else {
+                    Action::None
+                }
+            }
+            KeyCode::Char('u') => {
+                if let Some(idx) = self.profile_index {
+                    Action::ConnMgrDuplicate(idx)
                 } else {
                     Action::None
                 }

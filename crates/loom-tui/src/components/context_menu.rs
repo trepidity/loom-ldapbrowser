@@ -124,19 +124,26 @@ impl ContextMenu {
     }
 
     /// Show the menu for the Profiles layout.
-    pub fn show_for_profiles(&mut self) {
-        self.items = vec![
-            MenuItem {
-                label: "Import Profiles".into(),
-                hint: "i".into(),
-                action: Action::ConnMgrImport,
-            },
-            MenuItem {
-                label: "Export Profiles".into(),
-                hint: "x".into(),
-                action: Action::ConnMgrExport,
-            },
-        ];
+    /// When a profile is selected, includes profile-specific actions.
+    pub fn show_for_profiles(&mut self, selected_profile: Option<usize>) {
+        self.items = Vec::new();
+        if let Some(idx) = selected_profile {
+            self.items.push(MenuItem {
+                label: "Duplicate Profile".into(),
+                hint: "u".into(),
+                action: Action::ConnMgrDuplicate(idx),
+            });
+        }
+        self.items.push(MenuItem {
+            label: "Import Profiles".into(),
+            hint: "i".into(),
+            action: Action::ConnMgrImport,
+        });
+        self.items.push(MenuItem {
+            label: "Export Profiles".into(),
+            hint: "x".into(),
+            action: Action::ConnMgrExport,
+        });
         self.selected = 0;
         self.anchor = None;
         self.visible = true;

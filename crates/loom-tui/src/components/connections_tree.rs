@@ -126,6 +126,13 @@ impl ConnectionsTree {
                     Action::None
                 }
             }
+            KeyCode::Char('u') => {
+                if let Some(idx) = self.selected_profile_index() {
+                    Action::ConnMgrDuplicate(idx)
+                } else {
+                    Action::None
+                }
+            }
             KeyCode::Char('x') => Action::ConnMgrExport,
             KeyCode::Char('i') => Action::ConnMgrImport,
             _ => Action::None,

@@ -176,6 +176,7 @@ pub enum Action {
     ConnMgrSave(usize, Box<ConnectionProfile>), // save edited profile at index
     ConnMgrCreate(Box<ConnectionProfile>),      // create new profile
     ConnMgrDelete(usize),                       // delete saved profile by index
+    ConnMgrDuplicate(usize),                    // duplicate saved profile by index
     ConnMgrConnect(usize),                      // connect from connections manager
     ConnMgrExport,                              // open export profiles dialog
     ConnMgrImport,                              // open import profiles dialog

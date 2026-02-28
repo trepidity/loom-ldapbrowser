@@ -1448,14 +1448,16 @@ impl App {
                     let pos = Rect::new(mouse.column, mouse.row, 1, 1);
                     if let Some(ct) = self.conn_tree_area {
                         if ct.intersects(pos) {
-                            self.context_menu.show_for_profiles();
+                            self.context_menu
+                                .show_for_profiles(self.connection_form.profile_index);
                             self.context_menu.set_anchor(mouse.column, mouse.row);
                             return Action::Render;
                         }
                     }
                     if let Some(cf) = self.conn_form_area {
                         if cf.intersects(pos) {
-                            self.context_menu.show_for_profiles();
+                            self.context_menu
+                                .show_for_profiles(self.connection_form.profile_index);
                             self.context_menu.set_anchor(mouse.column, mouse.row);
                             return Action::Render;
                         }
@@ -1787,6 +1789,22 @@ impl App {
                         self.push_message("Profile deleted".to_string());
                     }
                     self.connection_form.clear();
+                }
+            }
+            Action::ConnMgrDuplicate(idx) => {
+                if let Some(profile) = self.config.connections.get(idx).cloned() {
+                    let mut dup = profile;
+                    dup.name = format!("{}-copy", dup.name);
+                    self.config.connections.push(dup);
+                    let new_idx = self.config.connections.len() - 1;
+                    if let Err(e) = self.config.save() {
+                        self.push_error(format!("Failed to save config: {}", e));
+                    } else {
+                        self.push_message("Profile duplicated".to_string());
+                    }
+                    if let Some(created) = self.config.connections.get(new_idx) {
+                        self.connection_form.view_profile(new_idx, created);
+                    }
                 }
             }
             Action::ConnMgrConnect(idx) => {
