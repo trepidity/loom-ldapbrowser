@@ -17,6 +17,7 @@ use loom_core::offline::OfflineDirectory;
 use loom_core::schema::{AttributeSyntax, SchemaCache};
 use loom_core::tls::{TrustStore, TrustedCertEntry};
 use loom_core::tree::{DirectoryTree, TreeNode};
+use loom_core::vault::Vault;
 
 use crate::action::{Action, ActiveLayout, ConnectionId, ContextMenuSource, FocusTarget};
 use crate::component::Component;
@@ -46,6 +47,7 @@ use crate::components::search_dialog::SearchDialog;
 use crate::components::status_bar::StatusBar;
 use crate::components::tab_bar::TabBar;
 use crate::components::tree_panel::TreePanel;
+use crate::components::vault_password_dialog::VaultPasswordDialog;
 use crate::config::{AppConfig, ConnectionProfile};
 use crate::event::{self, AppEvent};
 use crate::focus::FocusManager;
@@ -85,6 +87,9 @@ pub struct App {
     should_quit: bool,
     next_conn_id: ConnectionId,
 
+    // Encrypted vault for password storage
+    vault: Option<Vault>,
+
     // Certificate trust
     trust_store: Arc<TrustStore>,
 
@@ -121,6 +126,7 @@ pub struct App {
     connect_dialog: ConnectDialog,
     new_connection_dialog: NewConnectionDialog,
     credential_prompt: CredentialPromptDialog,
+    vault_password_dialog: VaultPasswordDialog,
     search_dialog: SearchDialog,
     attribute_editor: AttributeEditor,
     attribute_picker: AttributePicker,
@@ -161,7 +167,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: AppConfig) -> Self {
+    pub fn new(config: AppConfig, vault: Option<Vault>) -> Self {
         let theme = Theme::load(&config.general.theme);
         let keymap = Keymap::from_config(&config.keybindings);
         let status_bar = StatusBar::new(theme.clone(), &keymap);
@@ -174,6 +180,7 @@ impl App {
             config,
             should_quit: false,
             next_conn_id: 0,
+            vault,
             trust_store,
             active_layout: ActiveLayout::Profiles,
             tabs: Vec::new(),
@@ -199,6 +206,7 @@ impl App {
             connect_dialog: ConnectDialog::new(theme.clone()),
             new_connection_dialog: NewConnectionDialog::new(theme.clone()),
             credential_prompt: CredentialPromptDialog::new(theme.clone()),
+            vault_password_dialog: VaultPasswordDialog::new(theme.clone()),
             search_dialog: SearchDialog::new(theme.clone()),
             attribute_editor: AttributeEditor::new(theme.clone()),
             attribute_picker: AttributePicker::new(theme.clone()),
@@ -289,7 +297,7 @@ impl App {
             return Ok(());
         }
         let password = if profile.bind_dn.is_some() {
-            match resolve_password(profile) {
+            match resolve_password(profile, &self.vault) {
                 Ok(password) if !password.is_empty() => password,
                 _ => {
                     // No password available — need interactive prompt
@@ -1221,6 +1229,8 @@ impl App {
                             self.new_connection_dialog.handle_key_event(key)
                         } else if self.credential_prompt.visible {
                             self.credential_prompt.handle_key_event(key)
+                        } else if self.vault_password_dialog.visible {
+                            self.vault_password_dialog.handle_key_event(key)
                         } else if self.search_dialog.visible {
                             // Search popup is open — route keys based on input state
                             if matches!(
@@ -1283,6 +1293,11 @@ impl App {
                             let a = self.help_popup.handle_key_event(key);
                             if matches!(a, Action::ClosePopup) && self.show_connect_after_help {
                                 self.show_connect_after_help = false;
+                                // Ask about vault setup, then show connect dialog
+                                let _ = self.action_tx.send(Action::ShowConfirm(
+                                    "Use an encrypted vault for password storage?".to_string(),
+                                    Box::new(Action::VaultSetupPrompt),
+                                ));
                                 let _ = self.action_tx.send(Action::ShowConnectDialog);
                             }
                             a
@@ -1694,6 +1709,14 @@ impl App {
                         );
                         self.status_bar.set_message(auth_msg.clone());
                         self.log_panel.push_info(auth_msg);
+                        // Auto-store in vault if using Vault method
+                        if matches!(profile.credential_method, CredentialMethod::Vault) {
+                            if let Some(ref mut vault) = self.vault {
+                                if !password.is_empty() {
+                                    let _ = vault.set_password(&profile.name, &password);
+                                }
+                            }
+                        }
                     }
                     Err(e) if extract_cert_trust_error(&e).is_some() => {
                         let info = extract_cert_trust_error(&e).unwrap();
@@ -1754,6 +1777,12 @@ impl App {
                 if idx >= self.config.connections.len() {
                     self.push_error("Cannot edit example profile".to_string());
                 } else {
+                    // Rename vault entry if profile name changed
+                    let old_name = self.config.connections[idx].name.clone();
+                    let new_name = profile.name.clone();
+                    let is_vault_method =
+                        matches!(profile.credential_method, CredentialMethod::Vault);
+
                     self.config.update_connection(idx, *profile);
                     if let Err(e) = self.config.save() {
                         self.push_error(format!("Failed to save config: {}", e));
@@ -1761,12 +1790,32 @@ impl App {
                         self.status_bar.set_message("Profile saved".to_string());
                         self.log_panel.push_info("Profile saved".to_string());
                     }
+
+                    // Handle vault rename
+                    if old_name != new_name {
+                        if let Some(ref mut vault) = self.vault {
+                            let _ = vault.rename_profile(&old_name, &new_name);
+                        }
+                    }
+
+                    // If using Vault method, prompt to store password
+                    if is_vault_method {
+                        if let Some(ref vault) = self.vault {
+                            if vault.get_password(&new_name).is_none() {
+                                self.vault_password_dialog.show_store_password(&new_name);
+                            }
+                        }
+                    }
+
                     if let Some(updated) = self.config.connections.get(idx) {
                         self.connection_form.view_profile(idx, updated);
                     }
                 }
             }
             Action::ConnMgrCreate(profile) => {
+                let is_vault_method = matches!(profile.credential_method, CredentialMethod::Vault);
+                let profile_name = profile.name.clone();
+
                 self.config.connections.push(*profile);
                 let new_idx = self.config.connections.len() - 1;
                 if let Err(e) = self.config.save() {
@@ -1777,16 +1826,27 @@ impl App {
                 if let Some(created) = self.config.connections.get(new_idx) {
                     self.connection_form.view_profile(new_idx, created);
                 }
+
+                // If using Vault method, prompt to store password
+                if is_vault_method && self.vault.is_some() {
+                    self.vault_password_dialog
+                        .show_store_password(&profile_name);
+                }
             }
             Action::ConnMgrDelete(idx) => {
                 if idx >= self.config.connections.len() {
                     self.push_error("Cannot delete example profile".to_string());
                 } else {
+                    let profile_name = self.config.connections[idx].name.clone();
                     self.config.delete_connection(idx);
                     if let Err(e) = self.config.save() {
                         self.push_error(format!("Failed to save config: {}", e));
                     } else {
                         self.push_message("Profile deleted".to_string());
+                    }
+                    // Remove from vault
+                    if let Some(ref mut vault) = self.vault {
+                        let _ = vault.remove_password(&profile_name);
                     }
                     self.connection_form.clear();
                 }
@@ -2473,6 +2533,41 @@ impl App {
                 }
             },
 
+            // Vault actions
+            Action::VaultSetupPrompt => {
+                self.vault_password_dialog.show_create();
+            }
+            Action::VaultPasswordEntered(password) => {
+                // Create a new vault with the entered master password
+                let vault_path = Vault::default_path();
+                match Vault::create(&vault_path, &password) {
+                    Ok(vault) => {
+                        self.vault = Some(vault);
+                        self.config.general.vault_enabled = true;
+                        if let Err(e) = self.config.save() {
+                            self.push_error(format!("Failed to save config: {}", e));
+                        }
+                        self.push_message("Vault created successfully".to_string());
+                    }
+                    Err(e) => {
+                        self.push_error(format!("Failed to create vault: {}", e));
+                    }
+                }
+            }
+            Action::VaultStorePassword(profile_name, password) => {
+                if let Some(ref mut vault) = self.vault {
+                    if let Err(e) = vault.set_password(&profile_name, &password) {
+                        self.push_error(format!("Failed to store password in vault: {}", e));
+                    } else {
+                        self.push_message(format!(
+                            "Password for '{}' stored in vault",
+                            profile_name
+                        ));
+                    }
+                } else {
+                    self.push_error("No vault loaded".to_string());
+                }
+            }
             Action::Render | Action::Resize(_, _) | Action::None => {}
             _ => {}
         }
@@ -2630,6 +2725,9 @@ impl App {
         if self.credential_prompt.visible {
             self.credential_prompt.render(frame, full);
         }
+        if self.vault_password_dialog.visible {
+            self.vault_password_dialog.render(frame, full);
+        }
         if self.search_dialog.visible {
             // Composite search popup: results + input in one overlay
             let popup_width = (full.width as u32 * 90 / 100) as u16;
@@ -2724,7 +2822,7 @@ impl App {
 /// Resolve password from the connection profile's credential method.
 /// Returns empty string for Prompt method when LOOM_PASSWORD is not set,
 /// which signals the caller to show an interactive credential prompt.
-fn resolve_password(profile: &ConnectionProfile) -> anyhow::Result<String> {
+fn resolve_password(profile: &ConnectionProfile, vault: &Option<Vault>) -> anyhow::Result<String> {
     match profile.credential_method {
         CredentialMethod::Prompt => Ok(std::env::var("LOOM_PASSWORD").unwrap_or_default()),
         CredentialMethod::Command => {
@@ -2734,6 +2832,15 @@ fn resolve_password(profile: &ConnectionProfile) -> anyhow::Result<String> {
             Ok(CredentialProvider::from_command(cmd)?)
         }
         CredentialMethod::Keychain => Ok(CredentialProvider::from_keychain(&profile.name)?),
+        CredentialMethod::Vault => {
+            if let Some(v) = vault {
+                if let Some(pw) = v.get_password(&profile.name) {
+                    return Ok(pw.to_string());
+                }
+            }
+            // No vault loaded or no entry — return empty to trigger credential prompt
+            Ok(String::new())
+        }
     }
 }
 

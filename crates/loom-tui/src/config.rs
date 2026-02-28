@@ -157,6 +157,8 @@ pub struct GeneralConfig {
     pub autocomplete: bool,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub live_search: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub vault_enabled: bool,
 }
 
 fn default_theme() -> String {
@@ -177,6 +179,7 @@ impl Default for GeneralConfig {
             log_level: default_log_level(),
             autocomplete: true,
             live_search: true,
+            vault_enabled: false,
         }
     }
 }

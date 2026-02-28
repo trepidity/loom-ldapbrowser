@@ -25,3 +25,11 @@ rustls = { workspace = true }
 rustls-native-certs = { workspace = true }
 sha2 = { workspace = true }
 x509-parser = { workspace = true }
+argon2 = { workspace = true }
+chacha20poly1305 = { workspace = true }
+rand = { workspace = true }
+zeroize = { workspace = true }
+dirs = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

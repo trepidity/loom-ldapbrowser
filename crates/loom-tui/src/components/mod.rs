@@ -25,3 +25,4 @@ pub mod search_dialog;
 pub mod status_bar;
 pub mod tab_bar;
 pub mod tree_panel;
+pub mod vault_password_dialog;

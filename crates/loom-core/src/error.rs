@@ -40,6 +40,9 @@ pub enum CoreError {
     #[error("credential error: {0}")]
     CredentialError(String),
 
+    #[error("vault error: {0}")]
+    VaultError(String),
+
     #[error("timeout")]
     Timeout,
 

@@ -11,6 +11,7 @@ pub enum CredentialMethod {
     Prompt,
     Command,
     Keychain,
+    Vault,
 }
 
 /// Resolve a password using the configured credential method.

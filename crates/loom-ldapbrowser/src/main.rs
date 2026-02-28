@@ -1,8 +1,11 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::Parser;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
+use loom_core::vault::Vault;
 use loom_tui::app::App;
 use loom_tui::config::AppConfig;
 
@@ -32,6 +35,14 @@ struct Cli {
     /// Base DN (overrides config)
     #[arg(short, long)]
     base_dn: Option<String>,
+
+    /// Vault master password (avoids interactive prompt)
+    #[arg(long)]
+    vault_password: Option<String>,
+
+    /// Path to vault file (default: ~/.config/loom-ldapbrowser/vault.dat)
+    #[arg(long)]
+    vault: Option<String>,
 }
 
 #[tokio::main]
@@ -82,11 +93,66 @@ async fn main() -> Result<()> {
         config.connections.insert(0, profile);
     }
 
+    // Resolve vault
+    let vault = load_vault(&cli.vault_password, &cli.vault, &config);
+
     // Create and run the app
-    let mut app = App::new(config);
+    let mut app = App::new(config, vault);
     app.connect_first_profile().await;
     app.run().await?;
 
     info!("loom-ldapbrowser exiting");
     Ok(())
+}
+
+/// Attempt to open the vault if vault_enabled is set in config.
+/// Returns None if vault is not enabled, doesn't exist yet, or can't be opened.
+fn load_vault(
+    cli_password: &Option<String>,
+    cli_path: &Option<String>,
+    config: &AppConfig,
+) -> Option<Vault> {
+    if !config.general.vault_enabled {
+        return None;
+    }
+
+    let vault_path = cli_path
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(Vault::default_path);
+
+    if !Vault::exists(&vault_path) {
+        return None;
+    }
+
+    // Determine vault password: CLI arg > env var > interactive prompt
+    let password = if let Some(pw) = cli_password.clone() {
+        pw
+    } else if let Ok(pw) = std::env::var("LOOM_VAULT_PASSWORD") {
+        pw
+    } else {
+        // Interactive prompt before TUI starts
+        match rpassword::read_password_from_tty(Some("Vault master password: ")) {
+            Ok(pw) => pw,
+            Err(e) => {
+                eprintln!("Failed to read vault password: {}", e);
+                return None;
+            }
+        }
+    };
+
+    match Vault::open(&vault_path, &password) {
+        Ok(vault) => {
+            info!("Vault loaded successfully");
+            Some(vault)
+        }
+        Err(e) => {
+            warn!("Failed to open vault: {}", e);
+            eprintln!(
+                "Warning: Could not open vault ({}). Continuing without vault.",
+                e
+            );
+            None
+        }
+    }
 }

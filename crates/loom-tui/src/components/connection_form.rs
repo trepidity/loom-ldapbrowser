@@ -452,7 +452,8 @@ impl ConnectionForm {
                 self.credential_method = match self.credential_method {
                     CredentialMethod::Prompt => CredentialMethod::Command,
                     CredentialMethod::Command => CredentialMethod::Keychain,
-                    CredentialMethod::Keychain => CredentialMethod::Prompt,
+                    CredentialMethod::Keychain => CredentialMethod::Vault,
+                    CredentialMethod::Vault => CredentialMethod::Prompt,
                 };
                 Action::None
             }
@@ -470,7 +471,8 @@ impl ConnectionForm {
                         self.credential_method = match self.credential_method {
                             CredentialMethod::Prompt => CredentialMethod::Command,
                             CredentialMethod::Command => CredentialMethod::Keychain,
-                            CredentialMethod::Keychain => CredentialMethod::Prompt,
+                            CredentialMethod::Keychain => CredentialMethod::Vault,
+                            CredentialMethod::Vault => CredentialMethod::Prompt,
                         };
                         Action::None
                     }
@@ -620,6 +622,7 @@ impl ConnectionForm {
             CredentialMethod::Prompt => "Prompt",
             CredentialMethod::Command => "Command",
             CredentialMethod::Keychain => "Keychain",
+            CredentialMethod::Vault => "Vault",
         };
         self.render_field(
             frame,

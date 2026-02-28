@@ -16,3 +16,4 @@ pub mod server_detect;
 pub mod tls;
 pub mod tree;
 pub mod util;
+pub mod vault;

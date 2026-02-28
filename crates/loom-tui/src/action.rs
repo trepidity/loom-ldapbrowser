@@ -202,6 +202,11 @@ pub enum Action {
     ShowContextMenu(ContextMenuSource),
     CopyToClipboard(String),
 
+    // Vault
+    VaultStorePassword(String, String), // profile name + password
+    VaultSetupPrompt,                   // trigger vault creation flow
+    VaultPasswordEntered(String),       // vault master password from dialog
+
     // No-op
     None,
 }

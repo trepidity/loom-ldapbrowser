@@ -200,7 +200,7 @@ mod tests {
     fn test_detect_ad() {
         let mut attrs = BTreeMap::new();
         attrs.insert("forestFunctionality".to_string(), vec!["7".to_string()]);
-        let server = detect_server_type(&attrs, &None, &[]);
+        let server = detect_server_type(&attrs, None, &[]);
         assert_eq!(server, ServerType::ActiveDirectory);
     }
 
@@ -208,7 +208,7 @@ mod tests {
     fn test_detect_openldap_by_vendor() {
         let attrs = BTreeMap::new();
         let vendor = Some("OpenLDAP".to_string());
-        let server = detect_server_type(&attrs, &vendor, &[]);
+        let server = detect_server_type(&attrs, vendor.as_deref(), &[]);
         assert_eq!(server, ServerType::OpenLdap);
     }
 
@@ -219,14 +219,14 @@ mod tests {
             "objectClass".to_string(),
             vec!["top".to_string(), "OpenLDAProotDSE".to_string()],
         );
-        let server = detect_server_type(&attrs, &None, &[]);
+        let server = detect_server_type(&attrs, None, &[]);
         assert_eq!(server, ServerType::OpenLdap);
     }
 
     #[test]
     fn test_detect_unknown() {
         let attrs = BTreeMap::new();
-        let server = detect_server_type(&attrs, &None, &[]);
+        let server = detect_server_type(&attrs, None, &[]);
         assert!(matches!(server, ServerType::Unknown(_)));
     }
 }
