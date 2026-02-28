@@ -196,9 +196,10 @@ impl AppConfig {
             }
         }
 
-        let mut config = Self::default();
-        config.first_launch = true;
-        config
+        Self {
+            first_launch: true,
+            ..Self::default()
+        }
     }
 
     /// Parse config from a TOML string.
