@@ -100,7 +100,7 @@ impl LdapConnection {
             naming_contexts, vendor_name, vendor_version
         );
 
-        let server_type = detect_server_type(&attrs, &vendor_name, &supported_controls);
+        let server_type = detect_server_type(&attrs, vendor_name.as_deref(), &supported_controls);
         info!("Detected server type: {}", server_type);
 
         // Auto-discover base DN if not set
@@ -127,7 +127,7 @@ impl LdapConnection {
 /// Detect server type from RootDSE attributes.
 fn detect_server_type(
     attrs: &BTreeMap<String, Vec<String>>,
-    vendor_name: &Option<String>,
+    vendor_name: Option<&str>,
     supported_controls: &[String],
 ) -> ServerType {
     // Active Directory: has forestFunctionality or domainFunctionality
@@ -140,7 +140,7 @@ fn detect_server_type(
     }
 
     // Check vendor name
-    if let Some(ref vn) = vendor_name {
+    if let Some(vn) = vendor_name {
         let vn_lower = vn.to_lowercase();
         if vn_lower.contains("openldap") {
             return ServerType::OpenLdap;

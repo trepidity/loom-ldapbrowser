@@ -72,6 +72,7 @@ impl OfflineDirectory {
     /// across all attribute values for any other filter.
     pub fn search(&self, base_dn: &str, filter: &str) -> Vec<LdapEntry> {
         let base_lower = base_dn.to_lowercase();
+        let base_suffix = format!(",{}", base_lower);
 
         // Filter to entries under the base DN (or equal to it)
         let in_scope: Vec<&LdapEntry> = self
@@ -79,7 +80,7 @@ impl OfflineDirectory {
             .iter()
             .filter(|e| {
                 let dn_lower = e.dn.to_lowercase();
-                dn_lower == base_lower || dn_lower.ends_with(&format!(",{}", base_lower))
+                dn_lower == base_lower || dn_lower.ends_with(&base_suffix)
             })
             .collect();
 
@@ -113,13 +114,14 @@ impl OfflineDirectory {
     /// DN and common name attributes (for DN picker / fuzzy search).
     pub fn search_limited(&self, base_dn: &str, query: &str, limit: usize) -> Vec<LdapEntry> {
         let base_lower = base_dn.to_lowercase();
+        let base_suffix = format!(",{}", base_lower);
         let query_lower = query.to_lowercase();
 
         self.entries
             .iter()
             .filter(|e| {
                 let dn_lower = e.dn.to_lowercase();
-                (dn_lower == base_lower || dn_lower.ends_with(&format!(",{}", base_lower)))
+                (dn_lower == base_lower || dn_lower.ends_with(&base_suffix))
                     && (dn_lower.contains(&query_lower)
                         || e.attributes.values().any(|vals| {
                             vals.iter().any(|v| v.to_lowercase().contains(&query_lower))

@@ -99,9 +99,11 @@ impl LdapConnection {
         let timeout = Duration::from_secs(settings.timeout_secs);
 
         let ldap = match settings.tls_mode {
-            TlsMode::Auto => Self::auto_connect(&settings, timeout, &trust_store).await?,
-            TlsMode::Ldaps => Self::connect_ldaps(&settings, timeout, &trust_store).await?,
-            TlsMode::StartTls => Self::connect_starttls(&settings, timeout, &trust_store).await?,
+            TlsMode::Auto => Self::auto_connect(&settings, timeout, trust_store.as_ref()).await?,
+            TlsMode::Ldaps => Self::connect_ldaps(&settings, timeout, trust_store.as_ref()).await?,
+            TlsMode::StartTls => {
+                Self::connect_starttls(&settings, timeout, trust_store.as_ref()).await?
+            }
             TlsMode::None => Self::connect_plain(&settings, timeout).await?,
         };
 
@@ -119,7 +121,7 @@ impl LdapConnection {
     async fn auto_connect(
         settings: &ConnectionSettings,
         timeout: Duration,
-        trust_store: &Option<Arc<TrustStore>>,
+        trust_store: Option<&Arc<TrustStore>>,
     ) -> Result<Ldap, CoreError> {
         // Try LDAPS first (port 636 or user-specified)
         let ldaps_port = if settings.port == 389 {
@@ -179,7 +181,7 @@ impl LdapConnection {
     fn build_conn_settings(
         settings: &ConnectionSettings,
         timeout: Duration,
-        trust_store: &Option<Arc<TrustStore>>,
+        trust_store: Option<&Arc<TrustStore>>,
         starttls: bool,
     ) -> (
         LdapConnSettings,
@@ -209,7 +211,7 @@ impl LdapConnection {
 
     /// Check if a captured certificate slot has a value and return the appropriate error.
     fn check_captured_cert(
-        captured: &Option<Arc<Mutex<Option<CertificateInfo>>>>,
+        captured: Option<&Arc<Mutex<Option<CertificateInfo>>>>,
         err: impl std::fmt::Display,
         protocol: &str,
     ) -> CoreError {
@@ -228,7 +230,7 @@ impl LdapConnection {
     async fn connect_ldaps(
         settings: &ConnectionSettings,
         timeout: Duration,
-        trust_store: &Option<Arc<TrustStore>>,
+        trust_store: Option<&Arc<TrustStore>>,
     ) -> Result<Ldap, CoreError> {
         info!(
             "Attempting LDAPS connection to {}:{}",
@@ -239,7 +241,7 @@ impl LdapConnection {
             Self::build_conn_settings(settings, timeout, trust_store, false);
         let (conn, ldap) = LdapConnAsync::with_settings(conn_settings, &url)
             .await
-            .map_err(|e| Self::check_captured_cert(&captured, e, "LDAPS"))?;
+            .map_err(|e| Self::check_captured_cert(captured.as_ref(), e, "LDAPS"))?;
         ldap3::drive!(conn);
         Ok(ldap)
     }
@@ -247,7 +249,7 @@ impl LdapConnection {
     async fn connect_starttls(
         settings: &ConnectionSettings,
         timeout: Duration,
-        trust_store: &Option<Arc<TrustStore>>,
+        trust_store: Option<&Arc<TrustStore>>,
     ) -> Result<Ldap, CoreError> {
         info!(
             "Attempting StartTLS connection to {}:{}",
@@ -258,7 +260,7 @@ impl LdapConnection {
             Self::build_conn_settings(settings, timeout, trust_store, true);
         let (conn, ldap) = LdapConnAsync::with_settings(conn_settings, &url)
             .await
-            .map_err(|e| Self::check_captured_cert(&captured, e, "StartTLS"))?;
+            .map_err(|e| Self::check_captured_cert(captured.as_ref(), e, "StartTLS"))?;
         ldap3::drive!(conn);
         Ok(ldap)
     }
@@ -300,7 +302,7 @@ impl LdapConnection {
         );
 
         let timeout = Duration::from_secs(self.settings.timeout_secs);
-        let ts = &self.trust_store;
+        let ts = self.trust_store.as_ref();
 
         let ldap = match self.settings.tls_mode {
             TlsMode::Auto => Self::auto_connect(&self.settings, timeout, ts).await?,

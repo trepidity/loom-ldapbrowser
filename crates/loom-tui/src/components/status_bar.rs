@@ -65,7 +65,8 @@ impl Component for StatusBar {
         } else {
             let mut s = format!(" {}", self.connection_info);
             if let Some(count) = self.entry_count {
-                s.push_str(&format!(" | {} entries", count));
+                use std::fmt::Write;
+                let _ = write!(s, " | {} entries", count);
             }
             s
         };

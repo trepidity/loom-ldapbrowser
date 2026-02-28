@@ -273,7 +273,7 @@ mod tests {
         let data = b"hello world";
         let fp = sha256_fingerprint(data);
         // SHA-256 of "hello world" is well-known
-        assert!(fp.contains(":"));
+        assert!(fp.contains(':'));
         assert_eq!(fp.len(), 32 * 3 - 1); // XX:XX:... format
         assert_eq!(
             fp,

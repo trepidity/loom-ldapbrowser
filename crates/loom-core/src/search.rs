@@ -57,7 +57,7 @@ impl LdapConnection {
 
         let (entries, _res) = result
             .success()
-            .map_err(|e| CoreError::SearchFailed(format!("{}", e)))?;
+            .map_err(|e| CoreError::SearchFailed(e.to_string()))?;
 
         let entries: Vec<LdapEntry> = entries
             .into_iter()
@@ -101,7 +101,7 @@ impl LdapConnection {
 
             let (entries, res) = result
                 .success()
-                .map_err(|e| CoreError::SearchFailed(format!("{}", e)))?;
+                .map_err(|e| CoreError::SearchFailed(e.to_string()))?;
 
             let count = entries.len();
             for entry in entries {
