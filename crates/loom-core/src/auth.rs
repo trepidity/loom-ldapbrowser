@@ -1,6 +1,6 @@
 use crate::connection::LdapConnection;
 use crate::error::CoreError;
-use tracing::info;
+use tracing::{error, info};
 
 impl LdapConnection {
     /// Perform a simple bind with the given DN and password.
@@ -12,6 +12,10 @@ impl LdapConnection {
             .map_err(CoreError::Ldap)?;
 
         if result.rc != 0 {
+            error!(
+                "Bind failed for DN '{}': rc={}, {}",
+                bind_dn, result.rc, result.text
+            );
             return Err(CoreError::BindFailed(format!(
                 "LDAP bind returned rc={}: {}",
                 result.rc, result.text
@@ -32,6 +36,7 @@ impl LdapConnection {
             .map_err(CoreError::Ldap)?;
 
         if result.rc != 0 {
+            error!("Anonymous bind failed: rc={}, {}", result.rc, result.text);
             return Err(CoreError::BindFailed(format!(
                 "Anonymous bind returned rc={}: {}",
                 result.rc, result.text

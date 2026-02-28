@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ldap3::{Scope, SearchEntry};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::connection::LdapConnection;
 use crate::error::CoreError;
@@ -203,8 +203,8 @@ impl LdapConnection {
             );
             match self.try_load_schema_from(schema_dn).await {
                 Ok(cache) if !cache.attribute_types.is_empty() => {
-                    debug!(
-                        "load_schema: SUCCESS from {:?} — {} attr types, {} obj classes",
+                    info!(
+                        "Schema loaded from {:?}: {} attribute types, {} object classes",
                         schema_dn,
                         cache.attribute_types.len(),
                         cache.object_classes.len()
@@ -225,9 +225,10 @@ impl LdapConnection {
             }
         }
 
-        debug!(
-            "load_schema: all {} DNs exhausted, returning error",
-            dns_to_try.len()
+        error!(
+            "Schema load failed: all {} DNs exhausted ({:?})",
+            dns_to_try.len(),
+            dns_to_try
         );
         Err(last_err.unwrap_or_else(|| CoreError::SchemaError("No schema found".into())))
     }

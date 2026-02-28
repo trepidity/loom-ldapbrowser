@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ldap3::{Scope, SearchEntry};
 use serde::{Deserialize, Serialize};
 use strum::Display;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::connection::LdapConnection;
 use crate::error::CoreError;
@@ -95,18 +95,18 @@ impl LdapConnection {
         // Log all RootDSE attribute keys for troubleshooting non-standard servers
         let all_keys: Vec<&String> = attrs.keys().collect();
         debug!("RootDSE: all attribute keys returned: {:?}", all_keys);
-        debug!(
-            "RootDSE: subschemaSubentry={:?}, namingContexts={:?}, vendorName={:?}, vendorVersion={:?}",
-            subschema_subentry, naming_contexts, vendor_name, vendor_version
+        info!(
+            "RootDSE: namingContexts={:?}, vendorName={:?}, vendorVersion={:?}",
+            naming_contexts, vendor_name, vendor_version
         );
 
         let server_type = detect_server_type(&attrs, &vendor_name, &supported_controls);
-        debug!("Detected server type: {}", server_type);
+        info!("Detected server type: {}", server_type);
 
         // Auto-discover base DN if not set
         if self.base_dn.is_empty() {
             if let Some(first_nc) = naming_contexts.first() {
-                debug!("Auto-discovered base DN: {}", first_nc);
+                info!("Auto-discovered base DN: {}", first_nc);
                 self.base_dn = first_nc.clone();
             }
         }

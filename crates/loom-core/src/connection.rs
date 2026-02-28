@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ldap3::{Ldap, LdapConnAsync, LdapConnSettings};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::error::CoreError;
 use crate::tls::{self, CertificateInfo, TrustStore};
@@ -90,6 +90,12 @@ impl LdapConnection {
         settings: ConnectionSettings,
         trust_store: Option<Arc<TrustStore>>,
     ) -> Result<Self, CoreError> {
+        info!(
+            "Connecting to {}:{} (TLS mode: {})",
+            settings.host,
+            settings.port,
+            settings.tls_mode.label()
+        );
         let timeout = Duration::from_secs(settings.timeout_secs);
 
         let ldap = match settings.tls_mode {
@@ -135,7 +141,11 @@ impl LdapConnection {
                 // Bubble up cert trust errors immediately instead of falling through
                 return Err(CoreError::CertificateNotTrusted(info));
             }
-            Err(_) => {
+            Err(e) => {
+                error!(
+                    "LDAPS connection to {}:{} failed: {}",
+                    ldaps_settings.host, ldaps_port, e
+                );
                 warn!("LDAPS failed, trying StartTLS");
             }
         }
@@ -149,7 +159,11 @@ impl LdapConnection {
             Err(CoreError::CertificateNotTrusted(info)) => {
                 return Err(CoreError::CertificateNotTrusted(info));
             }
-            Err(_) => {
+            Err(e) => {
+                error!(
+                    "StartTLS connection to {}:{} failed: {}",
+                    settings.host, settings.port, e
+                );
                 warn!("StartTLS failed, trying plain LDAP");
             }
         }
@@ -202,10 +216,12 @@ impl LdapConnection {
         if let Some(slot) = captured {
             if let Ok(mut guard) = slot.lock() {
                 if let Some(info) = guard.take() {
+                    error!("{} certificate not trusted for {}", protocol, info.subject);
                     return CoreError::CertificateNotTrusted(Box::new(info));
                 }
             }
         }
+        error!("{} connection failed: {}", protocol, err);
         CoreError::ConnectionFailed(format!("{}: {}", protocol, err))
     }
 
@@ -214,6 +230,10 @@ impl LdapConnection {
         timeout: Duration,
         trust_store: &Option<Arc<TrustStore>>,
     ) -> Result<Ldap, CoreError> {
+        info!(
+            "Attempting LDAPS connection to {}:{}",
+            settings.host, settings.port
+        );
         let url = format!("ldaps://{}:{}", settings.host, settings.port);
         let (conn_settings, captured) =
             Self::build_conn_settings(settings, timeout, trust_store, false);
@@ -229,6 +249,10 @@ impl LdapConnection {
         timeout: Duration,
         trust_store: &Option<Arc<TrustStore>>,
     ) -> Result<Ldap, CoreError> {
+        info!(
+            "Attempting StartTLS connection to {}:{}",
+            settings.host, settings.port
+        );
         let url = format!("ldap://{}:{}", settings.host, settings.port);
         let (conn_settings, captured) =
             Self::build_conn_settings(settings, timeout, trust_store, true);
@@ -243,11 +267,21 @@ impl LdapConnection {
         settings: &ConnectionSettings,
         timeout: Duration,
     ) -> Result<Ldap, CoreError> {
+        info!(
+            "Attempting plain LDAP connection to {}:{}",
+            settings.host, settings.port
+        );
         let url = format!("ldap://{}:{}", settings.host, settings.port);
         let conn_settings = LdapConnSettings::new().set_conn_timeout(timeout);
         let (conn, ldap) = LdapConnAsync::with_settings(conn_settings, &url)
             .await
-            .map_err(|e| CoreError::ConnectionFailed(format!("plain LDAP: {e}")))?;
+            .map_err(|e| {
+                error!(
+                    "Plain LDAP connection to {}:{} failed: {}",
+                    settings.host, settings.port, e
+                );
+                CoreError::ConnectionFailed(format!("plain LDAP: {e}"))
+            })?;
         ldap3::drive!(conn);
         Ok(ldap)
     }

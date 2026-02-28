@@ -7,7 +7,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use tokio::sync::Mutex;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use loom_core::bulk::BulkMod;
 use loom_core::connection::LdapConnection;
@@ -461,6 +461,7 @@ impl App {
 
                         match result {
                             Ok(entries) => {
+                                info!("Loaded {} child objects under '{}'", entries.len(), dn);
                                 let nodes: Vec<TreeNode> = entries
                                     .iter()
                                     .map(|e| TreeNode::new(e.dn.clone()))
@@ -468,6 +469,7 @@ impl App {
                                 let _ = tx.send(Action::TreeChildrenLoaded(conn_id, dn, nodes));
                             }
                             Err(e) => {
+                                error!("Failed to load children of '{}': {}", dn, e);
                                 let _ = tx.send(Action::ErrorMessage(format!(
                                     "Failed to load {}: {}",
                                     dn, e
@@ -662,18 +664,15 @@ impl App {
                         let mut conn = connection.lock().await;
                         match conn.load_schema(subschema_dn.as_deref()).await {
                             Ok(schema) => {
-                                debug!(
-                                    "spawn_load_schema: success, {} attr types, {} obj classes",
+                                info!(
+                                    "Schema loaded: {} attribute types, {} object classes",
                                     schema.attribute_types.len(),
                                     schema.object_classes.len()
                                 );
                                 let _ = tx.send(Action::SchemaLoaded(conn_id, Box::new(schema)));
                             }
                             Err(e) => {
-                                debug!(
-                                    "spawn_load_schema: all schema DNs failed for conn_id={}: {}",
-                                    conn_id, e
-                                );
+                                error!("Schema load failed for conn_id={}: {}", conn_id, e);
                                 let _ = tx.send(Action::ErrorMessage(format!(
                                     "Failed to load schema: {} (using common attributes)",
                                     e
